@@ -1110,7 +1110,7 @@ function initInformeSelects(){
   const selAnio=document.getElementById('inf-anio');
   selAnio.innerHTML='';
   for(let y=anioActual+4;y>=anioActual;y--){
-    selAnio.innerHTML+=`<option value="${y}">${y}</option>`;
+    selAnio.innerHTML+=`<option value="${y}"${y===anioActual?' selected':''}>${y}</option>`;
   }
   renderInforme();
 }
