@@ -919,7 +919,7 @@ function renderDashboard(){
   const iconProceso = document.querySelector('.stat-card.yellow .stat-icon');
   const iconListas  = document.querySelector('.stat-card.green  .stat-icon');
   const iconIngres  = document.querySelector('.stat-card.red    .stat-icon');
-  if(iconMes){     iconMes.style.opacity = ordensMes.length > 0 ? '0.85' : '0.08'; iconMes.style.filter = ordensMes.length > 0 ? 'drop-shadow(0 0 8px var(--accent2))' : 'none'; }
+  if(iconMes){     iconMes.style.opacity = '0.08'; iconMes.style.filter = 'none'; }
   if(iconProceso){ iconProceso.style.opacity = proceso > 0 ? '0.85' : '0.08'; iconProceso.style.filter = proceso > 0 ? 'drop-shadow(0 0 8px var(--yellow))' : 'none'; }
   if(iconListas){  iconListas.style.opacity  = listas  > 0 ? '0.95' : '0.08'; iconListas.style.filter  = listas  > 0 ? 'drop-shadow(0 0 10px var(--green))'  : 'none'; }
   if(iconIngres){  iconIngres.style.opacity  = ingresosMes > 0 ? '0.90' : '0.08'; iconIngres.style.filter  = ingresosMes > 0 ? 'drop-shadow(0 0 8px var(--green))'  : 'none'; }
