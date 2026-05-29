@@ -514,7 +514,7 @@ select option{background:var(--bg3);color:var(--text);}
     </div>
     <div class="modal-foot">
       <button class="btn btn-ghost" onclick="closeModal('editar')">Cancelar</button>
-      <button class="btn btn-primary" onclick="guardarEdicion()">Actualizar</button>
+      <button class="btn btn-primary" onclick="event.stopPropagation();guardarEdicion()">Actualizar</button>
     </div>
   </div>
 </div>
@@ -683,7 +683,7 @@ function showToast(msg, isErr){
 // ═══════════════════════════════════════════════════════════
 //  NUEVA ORDEN
 // ═══════════════════════════════════════════════════════════
-function guardarOrden(){
+async function guardarOrden(){
   const nombre     = document.getElementById('f-nombre').value.trim();
   const telefono   = document.getElementById('f-telefono').value.trim();
   const dispositivo= document.getElementById('f-dispositivo').value.trim();
@@ -705,7 +705,7 @@ function guardarOrden(){
     historia:[{estado, nota:'Orden creada', fecha:horaFull()}]
   };
   ordenes.unshift(orden);
-  saveOrdenes();
+  await saveOrdenes();
   // auto-agregar cliente si no existe
   const existe = clientesInd.find(c=>c.telefono===telefono);
   if(!existe){
@@ -713,7 +713,7 @@ function guardarOrden(){
       id:'CLI-'+Date.now(), nombre, telefono,
       email: orden.email, dni: orden.dni, fechaAlta: hoy()
     });
-    saveClientes();
+    await saveClientes();
   }
   closeModal('nueva-orden');
   limpiarFormOrden();
@@ -798,10 +798,13 @@ function verDetalle(id){
   const o=ordenes.find(x=>x.id===id); if(!o) return;
   document.getElementById('detail-title').textContent='Orden '+o.id;
   const steps=['Recibido','En revisión','Reparando','Listo','Entregado'];
-  const idx=steps.indexOf(o.estado);
+  // Si está cancelado mostramos el último estado registrado como actual
+  const estadoTl = o.estado==='Cancelado' ? (o.historia.length>1 ? o.historia[o.historia.length-2].estado : 'Recibido') : o.estado;
+  const idx=steps.indexOf(estadoTl);
   const tl=steps.map((s,i)=>{
     let cls='pending',icon='○';
-    if(i<idx){cls='done';icon='✓';}
+    if(o.estado==='Cancelado'){ cls='pending'; icon='○'; }
+    else if(i<idx){cls='done';icon='✓';}
     else if(i===idx){cls='current';icon='●';}
     const h=o.historia.find(hh=>hh.estado===s);
     return `<div class="timeline-item">
@@ -842,19 +845,21 @@ function verDetalle(id){
 function abrirEditar(id){
   editandoId=id;
   const o=ordenes.find(x=>x.id===id); if(!o) return;
-  document.getElementById('edit-estado').value=o.estado;
   document.getElementById('edit-precio').value=o.precio||'';
   document.getElementById('edit-nota').value='';
+  // Forzar selección correcta del estado actual
+  const sel=document.getElementById('edit-estado');
+  Array.from(sel.options).forEach(opt=>{ opt.selected = opt.value===o.estado; });
   openModal('editar');
 }
-function guardarEdicion(){
+async function guardarEdicion(){
   const o=ordenes.find(x=>x.id===editandoId); if(!o) return;
   const ns=document.getElementById('edit-estado').value;
   const np=parseInt(document.getElementById('edit-precio').value)||o.precio;
   const nota=document.getElementById('edit-nota').value.trim()||'Estado actualizado';
   o.estado=ns; o.precio=np;
   o.historia.push({estado:ns,nota,fecha:horaFull()});
-  saveOrdenes();
+  try { await saveOrdenes(); } catch(e){ console.warn('saveOrdenes error',e); }
   closeModal('editar');
   renderOrdenes(); renderDashboard(); renderPresupuestos();
   showToast('Orden '+o.id+' actualizada');
@@ -864,10 +869,10 @@ function guardarEdicion(){
 // ═══════════════════════════════════════════════════════════
 //  ELIMINAR ORDEN
 // ═══════════════════════════════════════════════════════════
-function eliminarOrden(id){
+async function eliminarOrden(id){
   if(!confirm('¿Eliminar la orden '+id+'? Esta acción no se puede deshacer.')) return;
   ordenes=ordenes.filter(o=>o.id!==id);
-  saveOrdenes();
+  await saveOrdenes();
   renderOrdenes(); renderDashboard(); renderClientes(); renderPresupuestos();
   updateBadge(); showToast('Orden eliminada');
 }
@@ -936,7 +941,7 @@ function renderDashboard(){
 // ═══════════════════════════════════════════════════════════
 //  CLIENTES INDEPENDIENTES
 // ═══════════════════════════════════════════════════════════
-function guardarCliente(){
+async function guardarCliente(){
   const nombre=document.getElementById('nc-nombre').value.trim();
   const telefono=document.getElementById('nc-telefono').value.trim();
   if(!nombre||!telefono){ showToast('Nombre y teléfono son obligatorios',true); return; }
@@ -960,7 +965,7 @@ function guardarCliente(){
       fechaAlta:hoy()
     });
   }
-  saveClientes();
+  await saveClientes();
   closeModal('nuevo-cliente');
   limpiarFormCliente();
   renderClientes(); actualizarAutocomplete();
@@ -982,10 +987,10 @@ function editarCliente(id){
   openModal('nuevo-cliente');
 }
 
-function eliminarCliente(id){
+async function eliminarCliente(id){
   if(!confirm('¿Eliminar este cliente?')) return;
   clientesInd=clientesInd.filter(c=>c.id!==id);
-  saveClientes(); renderClientes(); showToast('Cliente eliminado');
+  await saveClientes(); renderClientes(); showToast('Cliente eliminado');
 }
 
 function renderClientes(){
