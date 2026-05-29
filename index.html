@@ -553,13 +553,26 @@ let editandoClienteId = null;
 let filtroActual = 'Todos';
 
 // ── STORAGE PERSISTENTE ──────────────────────────────────────
+// ── STORAGE CHUNKED (500 órdenes por clave = ~25MB capacidad total) ──
+const CHUNK_SIZE = 500;
+
 async function saveOrdenes(){
   try {
-    await window.storage.set('dc_ordenes', JSON.stringify(ordenes));
+    const chunks = Math.ceil(ordenes.length / CHUNK_SIZE) || 1;
+    for(let i = 0; i < chunks; i++){
+      const slice = ordenes.slice(i * CHUNK_SIZE, (i+1) * CHUNK_SIZE);
+      await window.storage.set('dc_ordenes_' + i, JSON.stringify(slice));
+    }
+    await window.storage.set('dc_ordenes_meta', JSON.stringify({chunks}));
+    // limpiar chunks viejos que ya no se usan
+    for(let i = chunks; i < chunks + 10; i++){
+      try { await window.storage.delete('dc_ordenes_' + i); } catch(e){}
+    }
   } catch(e) {
     localStorage.setItem('dc_ordenes', JSON.stringify(ordenes));
   }
 }
+
 async function saveClientes(){
   try {
     await window.storage.set('dc_clientes', JSON.stringify(clientesInd));
@@ -567,11 +580,25 @@ async function saveClientes(){
     localStorage.setItem('dc_clientes', JSON.stringify(clientesInd));
   }
 }
+
 async function loadData(){
   try {
-    const ro = await window.storage.get('dc_ordenes');
-    const rc = await window.storage.get('dc_clientes');
-    ordenes     = ro ? JSON.parse(ro.value) : JSON.parse(localStorage.getItem('dc_ordenes')  || '[]');
+    // intentar cargar con sistema chunked nuevo
+    const meta = await window.storage.get('dc_ordenes_meta').catch(()=>null);
+    if(meta){
+      const {chunks} = JSON.parse(meta.value);
+      let all = [];
+      for(let i = 0; i < chunks; i++){
+        const chunk = await window.storage.get('dc_ordenes_' + i).catch(()=>null);
+        if(chunk) all = all.concat(JSON.parse(chunk.value));
+      }
+      ordenes = all;
+    } else {
+      // fallback: clave única vieja
+      const ro = await window.storage.get('dc_ordenes').catch(()=>null);
+      ordenes = ro ? JSON.parse(ro.value) : JSON.parse(localStorage.getItem('dc_ordenes') || '[]');
+    }
+    const rc = await window.storage.get('dc_clientes').catch(()=>null);
     clientesInd = rc ? JSON.parse(rc.value) : JSON.parse(localStorage.getItem('dc_clientes') || '[]');
   } catch(e) {
     ordenes     = JSON.parse(localStorage.getItem('dc_ordenes')  || '[]');
@@ -1082,7 +1109,7 @@ function initInformeSelects(){
   document.getElementById('inf-mes').value=ahora.getMonth();
   const selAnio=document.getElementById('inf-anio');
   selAnio.innerHTML='';
-  for(let y=anioActual;y>=anioActual-3;y--){
+  for(let y=anioActual+5;y>=anioActual-5;y--){
     selAnio.innerHTML+=`<option value="${y}">${y}</option>`;
   }
   renderInforme();
