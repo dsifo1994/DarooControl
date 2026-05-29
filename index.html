@@ -610,6 +610,7 @@ function doLogin(){
   if(USERS[u] && USERS[u].pass === p){
     err.style.display='none';
     loadData().then(()=>{
+      localStorage.setItem('dc_session', u);
       document.getElementById('login-screen').style.display='none';
       document.getElementById('login-screen').style.pointerEvents='none';
       document.getElementById('app-wrapper').style.display='block';
@@ -624,6 +625,7 @@ function doLogin(){
 }
 
 function doLogout(){
+  localStorage.removeItem('dc_session');
   document.getElementById('login-screen').style.display='flex';
   document.getElementById('login-screen').style.pointerEvents='auto';
   document.getElementById('app-wrapper').style.display='none';
@@ -1364,9 +1366,22 @@ const aColors=['rgba(108,99,255,0.25)','rgba(34,201,122,0.2)','rgba(245,166,35,0
 function avatarColor(n){ let h=0; for(let i=0;i<n.length;i++) h+=n.charCodeAt(i); return aColors[h%aColors.length]; }
 
 // ═══════════════════════════════════════════════════════════
-//  INIT
+//  INIT — auto-login si hay sesión guardada
 // ═══════════════════════════════════════════════════════════
-// Los datos se cargan de forma asíncrona al hacer login (loadData)
+(function(){
+  const u = localStorage.getItem('dc_session');
+  if(u && USERS[u]){
+    loadData().then(()=>{
+      document.getElementById('login-screen').style.display='none';
+      document.getElementById('login-screen').style.pointerEvents='none';
+      document.getElementById('app-wrapper').style.display='block';
+      const info = USERS[u];
+      document.getElementById('sb-name').textContent = info.name;
+      document.getElementById('sb-avatar').textContent = info.name.slice(0,2).toUpperCase();
+      renderDashboard(); updateBadge(); initInformeSelects(); actualizarAutocomplete();
+    });
+  }
+})();
 </script>
 </body>
 </html>
