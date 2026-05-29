@@ -75,6 +75,7 @@ a{text-decoration:none;}
 
 /* ═══════════════════════ MAIN ═══════════════════════ */
 .main{margin-left:240px;min-height:100vh;display:flex;flex-direction:column;}
+#app-wrapper{display:flex;align-items:stretch;min-height:100vh;}
 .topbar{position:sticky;top:0;background:var(--topbar-bg);backdrop-filter:blur(16px);border-bottom:1px solid var(--border);padding:0 2rem;height:60px;display:flex;align-items:center;justify-content:space-between;z-index:50;transition:background .25s;}
 .page-title{font-size:15px;font-weight:600;}
 .topbar-actions{display:flex;gap:10px;align-items:center;}
@@ -291,6 +292,7 @@ select option{background:var(--bg3);color:var(--text);}
   </div>
 </div>
 
+<div id="app-wrapper" style="display:none;min-height:100vh;">
 <!-- ════════════════ SIDEBAR ════════════════ -->
 <aside class="sidebar" id="sidebar">
   <div class="logo">
@@ -331,7 +333,7 @@ select option{background:var(--bg3);color:var(--text);}
 </aside>
 
 <!-- ════════════════ MAIN ════════════════ -->
-<main class="main" id="main-app" style="display:none">
+<main class="main" id="main-app">
   <div class="topbar">
     <span class="page-title" id="topbar-title">Dashboard</span>
     <div class="topbar-actions">
@@ -444,6 +446,7 @@ select option{background:var(--bg3);color:var(--text);}
 
   </div>
 </main>
+</div><!-- /app-wrapper -->
 
 <!-- ══ MODAL NUEVA ORDEN ══ -->
 <div class="modal-overlay" id="modal-nueva-orden">
@@ -607,8 +610,7 @@ function doLogin(){
     err.style.display='none';
     loadData().then(()=>{
       document.getElementById('login-screen').style.display='none';
-      document.getElementById('main-app').style.display='flex';
-      document.getElementById('main-app').style.flexDirection='column';
+      document.getElementById('app-wrapper').style.display='block';
       const info = USERS[u];
       document.getElementById('sb-name').textContent = info.name;
       document.getElementById('sb-avatar').textContent = info.name.slice(0,2).toUpperCase();
@@ -621,7 +623,7 @@ function doLogin(){
 
 function doLogout(){
   document.getElementById('login-screen').style.display='flex';
-  document.getElementById('main-app').style.display='none';
+  document.getElementById('app-wrapper').style.display='none';
   document.getElementById('login-user').value='';
   document.getElementById('login-pass').value='';
 }
