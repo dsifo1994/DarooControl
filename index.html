@@ -542,14 +542,38 @@ select option{background:var(--bg3);color:var(--text);}
 // ═══════════════════════════════════════════════════════════
 //  DATA
 // ═══════════════════════════════════════════════════════════
-let ordenes  = JSON.parse(localStorage.getItem('dc_ordenes')  || '[]');
-let clientesInd = JSON.parse(localStorage.getItem('dc_clientes') || '[]');
+let ordenes  = [];
+let clientesInd = [];
 let editandoId = null;
 let editandoClienteId = null;
 let filtroActual = 'Todos';
 
-function saveOrdenes(){ localStorage.setItem('dc_ordenes', JSON.stringify(ordenes)); }
-function saveClientes(){ localStorage.setItem('dc_clientes', JSON.stringify(clientesInd)); }
+// ── STORAGE PERSISTENTE ──────────────────────────────────────
+async function saveOrdenes(){
+  try {
+    await window.storage.set('dc_ordenes', JSON.stringify(ordenes));
+  } catch(e) {
+    localStorage.setItem('dc_ordenes', JSON.stringify(ordenes));
+  }
+}
+async function saveClientes(){
+  try {
+    await window.storage.set('dc_clientes', JSON.stringify(clientesInd));
+  } catch(e) {
+    localStorage.setItem('dc_clientes', JSON.stringify(clientesInd));
+  }
+}
+async function loadData(){
+  try {
+    const ro = await window.storage.get('dc_ordenes');
+    const rc = await window.storage.get('dc_clientes');
+    ordenes     = ro ? JSON.parse(ro.value) : JSON.parse(localStorage.getItem('dc_ordenes')  || '[]');
+    clientesInd = rc ? JSON.parse(rc.value) : JSON.parse(localStorage.getItem('dc_clientes') || '[]');
+  } catch(e) {
+    ordenes     = JSON.parse(localStorage.getItem('dc_ordenes')  || '[]');
+    clientesInd = JSON.parse(localStorage.getItem('dc_clientes') || '[]');
+  }
+}
 
 function genId(){
   const n = (ordenes.length + 1).toString().padStart(4,'0');
@@ -581,13 +605,15 @@ function doLogin(){
   const err = document.getElementById('login-error');
   if(USERS[u] && USERS[u].pass === p){
     err.style.display='none';
-    document.getElementById('login-screen').style.display='none';
-    document.getElementById('main-app').style.display='flex';
-    document.getElementById('main-app').style.flexDirection='column';
-    const info = USERS[u];
-    document.getElementById('sb-name').textContent = info.name;
-    document.getElementById('sb-avatar').textContent = info.name.slice(0,2).toUpperCase();
-    renderDashboard(); updateBadge(); initInformeSelects();
+    loadData().then(()=>{
+      document.getElementById('login-screen').style.display='none';
+      document.getElementById('main-app').style.display='flex';
+      document.getElementById('main-app').style.flexDirection='column';
+      const info = USERS[u];
+      document.getElementById('sb-name').textContent = info.name;
+      document.getElementById('sb-avatar').textContent = info.name.slice(0,2).toUpperCase();
+      renderDashboard(); updateBadge(); initInformeSelects(); actualizarAutocomplete();
+    });
   } else {
     err.style.display='block';
   }
@@ -875,6 +901,16 @@ function renderDashboard(){
   document.getElementById('stat-proceso').textContent=proceso;
   document.getElementById('stat-listas').textContent=listas;
   document.getElementById('stat-ingresos').textContent=pesosARS(ingresosMes);
+
+  // Íconos se iluminan cuando tienen datos
+  const iconMes     = document.querySelector('.stat-card.purple .stat-icon');
+  const iconProceso = document.querySelector('.stat-card.yellow .stat-icon');
+  const iconListas  = document.querySelector('.stat-card.green  .stat-icon');
+  const iconIngres  = document.querySelector('.stat-card.red    .stat-icon');
+  if(iconMes){     iconMes.style.opacity = ordensMes.length > 0 ? '0.85' : '0.08'; iconMes.style.filter = ordensMes.length > 0 ? 'drop-shadow(0 0 8px var(--accent2))' : 'none'; }
+  if(iconProceso){ iconProceso.style.opacity = proceso > 0 ? '0.85' : '0.08'; iconProceso.style.filter = proceso > 0 ? 'drop-shadow(0 0 8px var(--yellow))' : 'none'; }
+  if(iconListas){  iconListas.style.opacity  = listas  > 0 ? '0.95' : '0.08'; iconListas.style.filter  = listas  > 0 ? 'drop-shadow(0 0 10px var(--green))'  : 'none'; }
+  if(iconIngres){  iconIngres.style.opacity  = ingresosMes > 0 ? '0.90' : '0.08'; iconIngres.style.filter  = ingresosMes > 0 ? 'drop-shadow(0 0 8px var(--green))'  : 'none'; }
 
   // recientes
   const recEl=document.getElementById('recent-list');
@@ -1320,7 +1356,7 @@ function avatarColor(n){ let h=0; for(let i=0;i<n.length;i++) h+=n.charCodeAt(i)
 // ═══════════════════════════════════════════════════════════
 //  INIT
 // ═══════════════════════════════════════════════════════════
-actualizarAutocomplete();
+// Los datos se cargan de forma asíncrona al hacer login (loadData)
 </script>
 </body>
 </html>
