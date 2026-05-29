@@ -446,7 +446,7 @@ select option{background:var(--bg3);color:var(--text);}
 
   </div>
 </main>
-</div><!-- /app-wrapper -->
+
 
 <!-- ══ MODAL NUEVA ORDEN ══ -->
 <div class="modal-overlay" id="modal-nueva-orden">
@@ -539,7 +539,8 @@ select option{background:var(--bg3);color:var(--text);}
   </div>
 </div>
 
-<div class="toast" id="toast">✅ <span id="toast-msg">Guardado</span></div>
+
+</div><!-- /app-wrapper --><div class="toast" id="toast">✅ <span id="toast-msg">Guardado</span></div>
 
 <script>
 // ═══════════════════════════════════════════════════════════
@@ -610,6 +611,7 @@ function doLogin(){
     err.style.display='none';
     loadData().then(()=>{
       document.getElementById('login-screen').style.display='none';
+      document.getElementById('login-screen').style.pointerEvents='none';
       document.getElementById('app-wrapper').style.display='block';
       const info = USERS[u];
       document.getElementById('sb-name').textContent = info.name;
@@ -623,6 +625,7 @@ function doLogin(){
 
 function doLogout(){
   document.getElementById('login-screen').style.display='flex';
+  document.getElementById('login-screen').style.pointerEvents='auto';
   document.getElementById('app-wrapper').style.display='none';
   document.getElementById('login-user').value='';
   document.getElementById('login-pass').value='';
@@ -665,8 +668,8 @@ function showPage(name, el){
 // ═══════════════════════════════════════════════════════════
 function openModal(id){  document.getElementById('modal-'+id).classList.add('open'); }
 function closeModal(id){ document.getElementById('modal-'+id).classList.remove('open'); }
-document.querySelectorAll('.modal-overlay').forEach(o=>{
-  o.addEventListener('click', e=>{ if(e.target===o) o.classList.remove('open'); });
+document.querySelectorAll('.modal-overlay').forEach(overlayEl=>{
+  overlayEl.addEventListener('click', e=>{ if(e.target===overlayEl) overlayEl.classList.remove('open'); });
 });
 
 // ═══════════════════════════════════════════════════════════
