@@ -287,7 +287,7 @@ select option{background:var(--bg3);color:var(--text);}
       <input type="password" id="login-pass" placeholder="••••••••" autocomplete="current-password" onkeydown="if(event.key==='Enter')doLogin()">
     </div>
     <button class="btn btn-primary" style="width:100%;justify-content:center;padding:.75rem" onclick="doLogin()">Ingresar al sistema</button>
-    <p style="font-size:11px;color:var(--muted);text-align:center;margin-top:1rem">Usuario: <b>admin</b> · Contraseña: <b>daroocell</b></p>
+
   </div>
 </div>
 
@@ -597,7 +597,7 @@ function pesosARS(n){
 // ═══════════════════════════════════════════════════════════
 //  LOGIN
 // ═══════════════════════════════════════════════════════════
-const USERS = { admin:{ pass:'daroocell', name:'Administrador' } };
+const USERS = { admin:{ pass:'Thiago2025', name:'Administrador' } };
 
 function doLogin(){
   const u = document.getElementById('login-user').value.trim().toLowerCase();
