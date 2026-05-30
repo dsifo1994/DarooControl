@@ -544,35 +544,6 @@ select option{background:var(--bg3);color:var(--text);}
 
 <script>
 // ═══════════════════════════════════════════════════════════
-//  CONFIGURACIÓN SUPABASE
-//  REEMPLAZÁ estos valores con los tuyos de supabase.com
-// ═══════════════════════════════════════════════════════════
-const SUPABASE_URL = 'https://okzvxjlxidmydmxueihf.supabase.co';
-const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9renZ4amx4aWRteWRteHVlaWhmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODAwODg0MzUsImV4cCI6MjA5NTY2NDQzNX0.sevF9AukKhXtN9NGV9tsahmlW2fwygbeCMLxiXFSB14';
-
-// ID de tu tenant (el que creaste en el SQL, o el de tu negocio)
-// Cada cliente que alquilas el sistema tiene un TENANT_ID diferente
-const TENANT_ID = 'aaaaaaaa-0000-0000-0000-000000000001';
-
-// ── Helper para llamar a Supabase REST API ─────────────────
-async function sb(method, table, body=null, params=''){
-  const url = `${SUPABASE_URL}/rest/v1/${table}${params}`;
-  const headers = {
-    'apikey': SUPABASE_ANON_KEY,
-    'Authorization': 'Bearer ' + SUPABASE_ANON_KEY,
-    'Content-Type': 'application/json',
-    'Prefer': method==='POST' ? 'return=representation' : method==='PATCH'||method==='DELETE' ? 'return=representation' : ''
-  };
-  const r = await fetch(url, { method, headers, body: body ? JSON.stringify(body) : null });
-  if(!r.ok){
-    const err = await r.text();
-    throw new Error(`Supabase ${method} ${table}: ${err}`);
-  }
-  const text = await r.text();
-  return text ? JSON.parse(text) : [];
-}
-
-// ═══════════════════════════════════════════════════════════
 //  DATA
 // ═══════════════════════════════════════════════════════════
 let ordenes  = [];
@@ -581,104 +552,64 @@ let editandoId = null;
 let editandoClienteId = null;
 let filtroActual = 'Todos';
 
-// ── STORAGE: Supabase como backend ───────────────────────────
-async function saveOrden(orden){
-  // Nuevo → INSERT, existente → UPDATE
-  const payload = {
-    tenant_id:    TENANT_ID,
-    orden_id:     orden.id,
-    nombre:       orden.nombre,
-    telefono:     orden.telefono,
-    email:        orden.email||null,
-    dni:          orden.dni||null,
-    dispositivo:  orden.dispositivo,
-    imei:         orden.imei||null,
-    falla:        orden.falla,
-    estado:       orden.estado,
-    precio:       orden.precio||0,
-    obs:          orden.obs||null,
-    fecha:        orden.fecha,
-    historia:     orden.historia,
-    actualizado_en: new Date().toISOString()
-  };
-  await sb('POST', 'ordenes', payload, '');
+// ── STORAGE PERSISTENTE ──────────────────────────────────────
+// ── STORAGE CHUNKED (500 órdenes por clave = ~25MB capacidad total) ──
+const CHUNK_SIZE = 500;
+
+async function saveOrdenes(){
+  try {
+    const chunks = Math.ceil(ordenes.length / CHUNK_SIZE) || 1;
+    for(let i = 0; i < chunks; i++){
+      const slice = ordenes.slice(i * CHUNK_SIZE, (i+1) * CHUNK_SIZE);
+      await window.storage.set('dc_ordenes_' + i, JSON.stringify(slice));
+    }
+    await window.storage.set('dc_ordenes_meta', JSON.stringify({chunks}));
+    // limpiar chunks viejos que ya no se usan
+    for(let i = chunks; i < chunks + 10; i++){
+      try { await window.storage.delete('dc_ordenes_' + i); } catch(e){}
+    }
+  } catch(e) {
+    localStorage.setItem('dc_ordenes', JSON.stringify(ordenes));
+  }
 }
 
-async function updateOrden(orden){
-  const payload = {
-    estado:       orden.estado,
-    precio:       orden.precio||0,
-    obs:          orden.obs||null,
-    historia:     orden.historia,
-    actualizado_en: new Date().toISOString()
-  };
-  await sb('PATCH', 'ordenes', payload, `?tenant_id=eq.${TENANT_ID}&orden_id=eq.${orden.id}`);
-}
-
-async function deleteOrden(id){
-  await sb('DELETE', 'ordenes', null, `?tenant_id=eq.${TENANT_ID}&orden_id=eq.${id}`);
-}
-
-async function saveCliente(c){
-  const payload = {
-    tenant_id:  TENANT_ID,
-    nombre:     c.nombre,
-    telefono:   c.telefono,
-    email:      c.email||null,
-    dni:        c.dni||null,
-    fecha_alta: c.fechaAlta||hoy()
-  };
-  // upsert por telefono+tenant
-  await sb('POST', 'clientes', payload, '?on_conflict=tenant_id,telefono');
-}
-
-async function deleteCliente(telefono){
-  await sb('DELETE', 'clientes', null, `?tenant_id=eq.${TENANT_ID}&telefono=eq.${telefono}`);
+async function saveClientes(){
+  try {
+    await window.storage.set('dc_clientes', JSON.stringify(clientesInd));
+  } catch(e) {
+    localStorage.setItem('dc_clientes', JSON.stringify(clientesInd));
+  }
 }
 
 async function loadData(){
   try {
-    const [ords, clis] = await Promise.all([
-      sb('GET', 'ordenes', null, `?tenant_id=eq.${TENANT_ID}&order=creado_en.desc`),
-      sb('GET', 'clientes', null, `?tenant_id=eq.${TENANT_ID}&order=nombre.asc`)
-    ]);
-    // Mapear de formato Supabase al formato interno de la app
-    ordenes = ords.map(o => ({
-      id:          o.orden_id,
-      nombre:      o.nombre,
-      telefono:    o.telefono,
-      email:       o.email||'',
-      dni:         o.dni||'',
-      dispositivo: o.dispositivo,
-      imei:        o.imei||'',
-      falla:       o.falla,
-      estado:      o.estado,
-      precio:      o.precio||0,
-      obs:         o.obs||'',
-      fecha:       o.fecha,
-      historia:    o.historia||[]
-    }));
-    clientesInd = clis.map(c => ({
-      id:        c.id,
-      nombre:    c.nombre,
-      telefono:  c.telefono,
-      email:     c.email||'',
-      dni:       c.dni||'',
-      fechaAlta: c.fecha_alta||''
-    }));
+    // intentar cargar con sistema chunked nuevo
+    const meta = await window.storage.get('dc_ordenes_meta').catch(()=>null);
+    if(meta){
+      const {chunks} = JSON.parse(meta.value);
+      let all = [];
+      for(let i = 0; i < chunks; i++){
+        const chunk = await window.storage.get('dc_ordenes_' + i).catch(()=>null);
+        if(chunk) all = all.concat(JSON.parse(chunk.value));
+      }
+      ordenes = all;
+    } else {
+      // fallback: clave única vieja
+      const ro = await window.storage.get('dc_ordenes').catch(()=>null);
+      ordenes = ro ? JSON.parse(ro.value) : JSON.parse(localStorage.getItem('dc_ordenes') || '[]');
+    }
+    const rc = await window.storage.get('dc_clientes').catch(()=>null);
+    clientesInd = rc ? JSON.parse(rc.value) : JSON.parse(localStorage.getItem('dc_clientes') || '[]');
   } catch(e) {
-    console.error('Error cargando datos de Supabase:', e);
-    showToast('Error conectando con la base de datos', true);
+    ordenes     = JSON.parse(localStorage.getItem('dc_ordenes')  || '[]');
+    clientesInd = JSON.parse(localStorage.getItem('dc_clientes') || '[]');
   }
 }
 
-async function genId(){
-  // Calcular el siguiente número basado en órdenes locales
-  const nums = ordenes.map(o => parseInt(o.id.split('-')[1]||0)).filter(n=>!isNaN(n));
-  const next = nums.length ? Math.max(...nums) + 1 : 1;
-  return 'DC-' + next.toString().padStart(4,'0');
+function genId(){
+  const n = (ordenes.length + 1).toString().padStart(4,'0');
+  return 'DC-' + n;
 }
-
 function hoy(){
   return new Date().toLocaleDateString('es-AR',{day:'2-digit',month:'2-digit',year:'numeric'});
 }
@@ -686,6 +617,7 @@ function horaFull(){
   return new Date().toLocaleString('es-AR',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'});
 }
 function mesAnio(dateStr){
+  // dateStr = dd/mm/yyyy
   const p = dateStr.split('/');
   return { mes: parseInt(p[1])-1, anio: parseInt(p[2]) };
 }
@@ -694,7 +626,7 @@ function pesosARS(n){
 }
 
 // ═══════════════════════════════════════════════════════════
-//  LOGIN (credenciales simples — sin Supabase Auth por ahora)
+//  LOGIN
 // ═══════════════════════════════════════════════════════════
 const USERS = { admin:{ pass:'Thiago2025', name:'Administrador' } };
 
@@ -704,9 +636,6 @@ function doLogin(){
   const err = document.getElementById('login-error');
   if(USERS[u] && USERS[u].pass === p){
     err.style.display='none';
-    const loginBtn = document.querySelector('#login-screen .btn-primary');
-    loginBtn.textContent = '⏳ Cargando datos...';
-    loginBtn.disabled = true;
     loadData().then(()=>{
       localStorage.setItem('dc_session', u);
       document.getElementById('login-screen').style.display='none';
@@ -716,10 +645,6 @@ function doLogin(){
       document.getElementById('sb-name').textContent = info.name;
       document.getElementById('sb-avatar').textContent = info.name.slice(0,2).toUpperCase();
       renderDashboard(); updateBadge(); initInformeSelects(); actualizarAutocomplete();
-    }).catch(()=>{
-      loginBtn.textContent = 'Ingresar al sistema';
-      loginBtn.disabled = false;
-      showToast('Error al conectar con Supabase', true);
     });
   } else {
     err.style.display='block';
@@ -803,8 +728,7 @@ async function guardarOrden(){
   const precio = parseInt(document.getElementById('f-precio').value)||0;
   const estado = document.getElementById('f-estado').value;
   const orden = {
-    id: await genId(),
-    nombre, telefono,
+    id:genId(), nombre, telefono,
     email: document.getElementById('f-email').value.trim(),
     dni:   document.getElementById('f-dni').value.trim(),
     dispositivo,
@@ -814,28 +738,21 @@ async function guardarOrden(){
     fecha: hoy(),
     historia:[{estado, nota:'Orden creada', fecha:horaFull()}]
   };
-
-  try {
-    await saveOrden(orden);
-    ordenes.unshift(orden);
-    // auto-agregar cliente si no existe
-    const existe = clientesInd.find(c=>c.telefono===telefono);
-    if(!existe){
-      const nuevoCliente = {
-        id:'CLI-'+Date.now(), nombre, telefono,
-        email: orden.email, dni: orden.dni, fechaAlta: hoy()
-      };
-      await saveCliente(nuevoCliente);
-      clientesInd.push(nuevoCliente);
-    }
-    closeModal('nueva-orden');
-    limpiarFormOrden();
-    renderDashboard(); renderOrdenes(); updateBadge(); actualizarAutocomplete();
-    showToast('Orden '+orden.id+' creada ✓');
-  } catch(e) {
-    showToast('Error al guardar la orden', true);
-    console.error(e);
+  ordenes.unshift(orden);
+  await saveOrdenes();
+  // auto-agregar cliente si no existe
+  const existe = clientesInd.find(c=>c.telefono===telefono);
+  if(!existe){
+    clientesInd.push({
+      id:'CLI-'+Date.now(), nombre, telefono,
+      email: orden.email, dni: orden.dni, fechaAlta: hoy()
+    });
+    await saveClientes();
   }
+  closeModal('nueva-orden');
+  limpiarFormOrden();
+  renderDashboard(); renderOrdenes(); updateBadge(); actualizarAutocomplete();
+  showToast('Orden '+orden.id+' creada');
 }
 
 function limpiarFormOrden(){
@@ -915,6 +832,7 @@ function verDetalle(id){
   const o=ordenes.find(x=>x.id===id); if(!o) return;
   document.getElementById('detail-title').textContent='Orden '+o.id;
   const steps=['Recibido','En revisión','Reparando','Listo','Entregado'];
+  // Si está cancelado mostramos el último estado registrado como actual
   const estadoTl = o.estado==='Cancelado' ? (o.historia.length>1 ? o.historia[o.historia.length-2].estado : 'Recibido') : o.estado;
   const idx=steps.indexOf(estadoTl);
   const tl=steps.map((s,i)=>{
@@ -963,6 +881,7 @@ function abrirEditar(id){
   const o=ordenes.find(x=>x.id===id); if(!o) return;
   document.getElementById('edit-precio').value=o.precio||'';
   document.getElementById('edit-nota').value='';
+  // Forzar selección correcta del estado actual
   const sel=document.getElementById('edit-estado');
   Array.from(sel.options).forEach(opt=>{ opt.selected = opt.value===o.estado; });
   openModal('editar');
@@ -974,16 +893,11 @@ async function guardarEdicion(){
   const nota=document.getElementById('edit-nota').value.trim()||'Estado actualizado';
   o.estado=ns; o.precio=np;
   o.historia.push({estado:ns,nota,fecha:horaFull()});
-  try {
-    await updateOrden(o);
-    closeModal('editar');
-    renderOrdenes(); renderDashboard(); renderPresupuestos();
-    showToast('Orden '+o.id+' actualizada ✓');
-    updateBadge();
-  } catch(e) {
-    showToast('Error al actualizar', true);
-    console.error(e);
-  }
+  try { await saveOrdenes(); } catch(e){ console.warn('saveOrdenes error',e); }
+  closeModal('editar');
+  renderOrdenes(); renderDashboard(); renderPresupuestos();
+  showToast('Orden '+o.id+' actualizada');
+  updateBadge();
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -991,14 +905,10 @@ async function guardarEdicion(){
 // ═══════════════════════════════════════════════════════════
 async function eliminarOrden(id){
   if(!confirm('¿Eliminar la orden '+id+'? Esta acción no se puede deshacer.')) return;
-  try {
-    await deleteOrden(id);
-    ordenes=ordenes.filter(o=>o.id!==id);
-    renderOrdenes(); renderDashboard(); renderClientes(); renderPresupuestos();
-    updateBadge(); showToast('Orden eliminada');
-  } catch(e) {
-    showToast('Error al eliminar', true);
-  }
+  ordenes=ordenes.filter(o=>o.id!==id);
+  await saveOrdenes();
+  renderOrdenes(); renderDashboard(); renderClientes(); renderPresupuestos();
+  updateBadge(); showToast('Orden eliminada');
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -1031,6 +941,7 @@ function renderDashboard(){
   document.getElementById('stat-listas').textContent=listas;
   document.getElementById('stat-ingresos').textContent=pesosARS(ingresosMes);
 
+  // Íconos se iluminan cuando tienen datos
   const iconMes     = document.querySelector('.stat-card.purple .stat-icon');
   const iconProceso = document.querySelector('.stat-card.yellow .stat-icon');
   const iconListas  = document.querySelector('.stat-card.green  .stat-icon');
@@ -1040,6 +951,7 @@ function renderDashboard(){
   if(iconListas){  iconListas.style.opacity  = listas  > 0 ? '0.95' : '0.08'; iconListas.style.filter  = listas  > 0 ? 'drop-shadow(0 0 10px var(--green))'  : 'none'; }
   if(iconIngres){  iconIngres.style.opacity  = ingresosMes > 0 ? '0.90' : '0.08'; iconIngres.style.filter  = ingresosMes > 0 ? 'drop-shadow(0 0 8px var(--green))'  : 'none'; }
 
+  // recientes
   const recEl=document.getElementById('recent-list');
   const rec=ordenes.slice(0,5);
   recEl.innerHTML=rec.length?rec.map(o=>`
@@ -1049,6 +961,7 @@ function renderDashboard(){
       ${statusBadge(o.estado)}
     </div>`).join(''):`<div class="empty-state" style="padding:2rem"><div class="empty-icon">📋</div><div class="empty-sub">No hay órdenes aún</div></div>`;
 
+  // listas
   const rEl=document.getElementById('ready-list');
   const readyOr=ordenes.filter(o=>o.estado==='Listo');
   rEl.innerHTML=readyOr.length?readyOr.map(o=>`
@@ -1067,34 +980,30 @@ async function guardarCliente(){
   const telefono=document.getElementById('nc-telefono').value.trim();
   if(!nombre||!telefono){ showToast('Nombre y teléfono son obligatorios',true); return; }
 
-  const clienteData = {
-    id: editandoClienteId||('CLI-'+Date.now()),
-    nombre, telefono,
-    email:document.getElementById('nc-email').value.trim(),
-    dni:document.getElementById('nc-dni').value.trim(),
-    fechaAlta: hoy()
-  };
-
-  try {
-    await saveCliente(clienteData);
-    if(editandoClienteId){
-      const idx = clientesInd.findIndex(x=>x.id===editandoClienteId);
-      if(idx>=0) clientesInd[idx] = clienteData;
-    } else {
-      const existe=clientesInd.find(c=>c.telefono===telefono);
-      if(existe){ showToast('Ya existe un cliente con ese teléfono',true); return; }
-      clientesInd.push(clienteData);
+  if(editandoClienteId){
+    const c=clientesInd.find(x=>x.id===editandoClienteId);
+    if(c){
+      c.nombre=nombre; c.telefono=telefono;
+      c.email=document.getElementById('nc-email').value.trim();
+      c.dni=document.getElementById('nc-dni').value.trim();
     }
     editandoClienteId=null;
     document.getElementById('cliente-modal-title').textContent='Nuevo cliente';
-    closeModal('nuevo-cliente');
-    limpiarFormCliente();
-    renderClientes(); actualizarAutocomplete();
-    showToast('Cliente guardado ✓');
-  } catch(e) {
-    showToast('Error al guardar cliente', true);
-    console.error(e);
+  } else {
+    const existe=clientesInd.find(c=>c.telefono===telefono);
+    if(existe){ showToast('Ya existe un cliente con ese teléfono',true); return; }
+    clientesInd.push({
+      id:'CLI-'+Date.now(), nombre, telefono,
+      email:document.getElementById('nc-email').value.trim(),
+      dni:document.getElementById('nc-dni').value.trim(),
+      fechaAlta:hoy()
+    });
   }
+  await saveClientes();
+  closeModal('nuevo-cliente');
+  limpiarFormCliente();
+  renderClientes(); actualizarAutocomplete();
+  showToast('Cliente guardado');
 }
 
 function limpiarFormCliente(){
@@ -1114,24 +1023,20 @@ function editarCliente(id){
 
 async function eliminarCliente(id){
   if(!confirm('¿Eliminar este cliente?')) return;
-  const c = clientesInd.find(x=>x.id===id); if(!c) return;
-  try {
-    await deleteCliente(c.telefono);
-    clientesInd=clientesInd.filter(x=>x.id!==id);
-    renderClientes(); showToast('Cliente eliminado');
-  } catch(e) {
-    showToast('Error al eliminar cliente', true);
-  }
+  clientesInd=clientesInd.filter(c=>c.id!==id);
+  await saveClientes(); renderClientes(); showToast('Cliente eliminado');
 }
 
 function renderClientes(){
   const q=(document.getElementById('search-clientes').value||'').toLowerCase();
+  // Merge clientes independientes + clientes de órdenes
   const mapOrd={};
   ordenes.forEach(o=>{
     if(!mapOrd[o.telefono]) mapOrd[o.telefono]={count:0,total:0};
     mapOrd[o.telefono].count++;
     mapOrd[o.telefono].total+=(o.precio||0);
   });
+  // build unified list: independientes primero, luego de órdenes no duplicados
   const todos=[];
   const telosVisto=new Set();
   clientesInd.forEach(c=>{ telosVisto.add(c.telefono); todos.push({...c, fromInd:true}); });
@@ -1222,6 +1127,7 @@ function renderInforme(){
   const ingresos=lista.filter(o=>o.estado!=='Cancelado').reduce((s,o)=>s+(o.precio||0),0);
   const canceladas=lista.filter(o=>o.estado==='Cancelado').length;
 
+  // fallas
   const fallaCounts={};
   FALLAS.forEach(f=>fallaCounts[f]=0);
   lista.forEach(o=>{ if(fallaCounts[o.falla]!==undefined) fallaCounts[o.falla]++; else if(o.falla) fallaCounts['OTRAS FALLAS']=(fallaCounts['OTRAS FALLAS']||0)+1; });
@@ -1263,80 +1169,203 @@ function renderInforme(){
 }
 
 // ═══════════════════════════════════════════════════════════
-//  PDF HELPERS
+//  PDF HELPERS — DarooCell Branded
 // ═══════════════════════════════════════════════════════════
+const DAROOCELL_LOGO = 'data:image/png;base64,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';
+
+// Paleta DarooCell
+const PDF_PURPLE  = [108, 99, 255];
+const PDF_DARK    = [15, 15, 25];
+const PDF_YELLOW  = [245, 166, 35];
+const PDF_GREEN   = [34, 201, 122];
+const PDF_BLUE    = [77, 166, 255];
+const PDF_GRAY    = [240, 240, 248];
+const PDF_MUTED   = [120, 120, 150];
+const PDF_WHITE   = [255, 255, 255];
+
 function getJsPDF(){
   const { jsPDF } = window.jspdf;
   return new jsPDF();
 }
 
-function pdfHeader(doc, titulo){
-  doc.setFillColor(108,99,255);
-  doc.rect(0,0,210,18,'F');
-  doc.setTextColor(255,255,255);
-  doc.setFontSize(13);
+function pdfHeader(doc, titulo, subtitulo){
+  const W = doc.internal.pageSize.getWidth();
+  // Fondo oscuro
+  doc.setFillColor(...PDF_DARK);
+  doc.rect(0, 0, W, 28, 'F');
+  // Franja amarilla izquierda
+  doc.setFillColor(...PDF_YELLOW);
+  doc.rect(0, 0, 4, 28, 'F');
+  // Logo embebido
+  try {
+    doc.addImage(DAROOCELL_LOGO, 'JPEG', 10, 5, 38, 18);
+  } catch(e) {
+    doc.setFontSize(13);
+    doc.setFont('helvetica','bold');
+    doc.setTextColor(...PDF_YELLOW);
+    doc.text('DAROO', 10, 14);
+    doc.setTextColor(...PDF_WHITE);
+    doc.text('CELL', 32, 14);
+  }
+  // Título derecha
+  doc.setFontSize(11);
   doc.setFont('helvetica','bold');
-  doc.text('DarooCell — Sistema de Reparaciones', 14, 7);
-  doc.setFontSize(10);
-  doc.setFont('helvetica','normal');
-  doc.text(titulo, 14, 13);
-  doc.setTextColor(50,50,50);
+  doc.setTextColor(...PDF_WHITE);
+  doc.text(titulo, W - 14, 12, { align: 'right' });
+  if(subtitulo){
+    doc.setFontSize(7.5);
+    doc.setFont('helvetica','normal');
+    doc.setTextColor(...PDF_MUTED);
+    doc.text(subtitulo, W - 14, 18, { align: 'right' });
+  }
+  // Línea violeta
+  doc.setDrawColor(...PDF_PURPLE);
+  doc.setLineWidth(0.6);
+  doc.line(0, 28, W, 28);
+  doc.setTextColor(40, 40, 60);
 }
 
 function pdfFooter(doc){
-  const pages=doc.internal.getNumberOfPages();
-  for(let i=1;i<=pages;i++){
+  const pages = doc.internal.getNumberOfPages();
+  const W = doc.internal.pageSize.getWidth();
+  for(let i = 1; i <= pages; i++){
     doc.setPage(i);
-    doc.setFontSize(8);
-    doc.setTextColor(150);
-    doc.text('DarooCell · Generado: '+horaFull(), 14, 290);
-    doc.text('Página '+i+' de '+pages, 195, 290, {align:'right'});
+    doc.setDrawColor(...PDF_PURPLE);
+    doc.setLineWidth(0.3);
+    doc.line(14, 285, W - 14, 285);
+    doc.setFontSize(7.5);
+    doc.setFont('helvetica','normal');
+    doc.setTextColor(...PDF_MUTED);
+    doc.text('DarooCell — Sistema de Gestión de Reparaciones  ·  Generado: ' + horaFull(), 14, 291);
+    doc.setTextColor(...PDF_PURPLE);
+    doc.setFont('helvetica','bold');
+    doc.text('Pág. ' + i + ' / ' + pages, W - 14, 291, { align: 'right' });
   }
 }
 
+function estadoColor(estado){
+  const map = {
+    'Recibido':    [77,166,255],  'En revisión': [245,166,35],
+    'Reparando':   [108,99,255],  'Listo':       [34,201,122],
+    'Entregado':   [120,120,150], 'Cancelado':   [255,95,109],
+  };
+  return map[estado] || [120,120,150];
+}
+
+// ── PDF ORDEN INDIVIDUAL ─────────────────────────────────────
 function pdfOrdenIndividual(id){
-  const o=ordenes.find(x=>x.id===id); if(!o) return;
-  const doc=getJsPDF();
-  pdfHeader(doc,'Orden de Reparación');
-  doc.setFontSize(11); doc.setFont('helvetica','bold');
-  doc.text('Orden: '+o.id, 14, 28);
-  doc.setFont('helvetica','normal'); doc.setFontSize(10);
+  const o = ordenes.find(x => x.id === id); if(!o) return;
+  const doc = getJsPDF();
+  const W = doc.internal.pageSize.getWidth();
+  pdfHeader(doc, 'Orden de Reparación', 'Documento interno de servicio técnico');
+  let y = 36;
 
-  const rows=[
-    ['Cliente',o.nombre],['Teléfono',o.telefono],
-    ['Email',o.email||'—'],['DNI',o.dni||'—'],
-    ['Dispositivo',o.dispositivo],['IMEI/Serie',o.imei||'—'],
-    ['Falla reportada',o.falla],['Estado',o.estado],
-    ['Presupuesto',o.precio?pesosARS(o.precio):'Sin cotizar'],
-    ['Fecha ingreso',o.fecha],
-    ['Observaciones',o.obs||'—']
-  ];
+  // Banda número de orden
+  doc.setFillColor(...PDF_PURPLE);
+  doc.roundedRect(14, y, W - 28, 16, 3, 3, 'F');
+  doc.setFontSize(13);
+  doc.setFont('helvetica','bold');
+  doc.setTextColor(...PDF_WHITE);
+  doc.text('Orden: ' + o.id, 22, y + 10);
+  doc.setFontSize(9);
+  doc.setFont('helvetica','normal');
+  doc.text('Ingreso: ' + o.fecha, W - 22, y + 10, { align: 'right' });
+  y += 20;
 
+  // Estado badge
+  const ec = estadoColor(o.estado);
+  doc.setFillColor(ec[0], ec[1], ec[2]);
+  doc.roundedRect(14, y, 50, 9, 2, 2, 'F');
+  doc.setFontSize(8);
+  doc.setFont('helvetica','bold');
+  doc.setTextColor(...PDF_WHITE);
+  doc.text(o.estado.toUpperCase(), 39, y + 6, { align: 'center' });
+  y += 15;
+
+  // Sección cliente
+  doc.setFontSize(8); doc.setFont('helvetica','bold');
+  doc.setTextColor(...PDF_PURPLE);
+  doc.text('DATOS DEL CLIENTE', 14, y);
+  doc.setDrawColor(...PDF_PURPLE); doc.setLineWidth(0.4);
+  doc.line(14, y+1.5, 80, y+1.5); y += 5;
   doc.autoTable({
-    startY:32, head:[['Campo','Detalle']],
-    body:rows,
-    styles:{fontSize:10,cellPadding:4},
-    headStyles:{fillColor:[108,99,255],textColor:[255,255,255]},
-    alternateRowStyles:{fillColor:[245,245,252]},
-    columnStyles:{0:{fontStyle:'bold',cellWidth:50}}
+    startY: y,
+    body: [['Nombre',o.nombre],['Teléfono',o.telefono],['Email',o.email||'—'],['DNI',o.dni||'—']],
+    styles: { fontSize:9.5, cellPadding:{top:3.5,bottom:3.5,left:6,right:6} },
+    columnStyles: {
+      0:{fontStyle:'bold',fillColor:[245,244,255],textColor:[80,70,160],cellWidth:52},
+      1:{textColor:[30,30,50]}
+    },
+    alternateRowStyles:{fillColor:[250,250,255]},
+    tableLineColor:[220,218,240],tableLineWidth:0.3,
+  });
+  y = doc.lastAutoTable.finalY + 8;
+
+  // Sección dispositivo
+  doc.setFontSize(8); doc.setFont('helvetica','bold');
+  doc.setTextColor(...PDF_PURPLE);
+  doc.text('DISPOSITIVO Y REPARACIÓN', 14, y);
+  doc.setDrawColor(...PDF_PURPLE); doc.setLineWidth(0.4);
+  doc.line(14, y+1.5, 95, y+1.5); y += 5;
+  doc.autoTable({
+    startY: y,
+    body: [
+      ['Dispositivo',o.dispositivo],['IMEI / Serie',o.imei||'—'],
+      ['Falla reportada',o.falla],['Observaciones',o.obs||'—'],
+      ['Presupuesto',o.precio?pesosARS(o.precio):'Sin cotizar'],
+    ],
+    styles:{fontSize:9.5,cellPadding:{top:3.5,bottom:3.5,left:6,right:6}},
+    columnStyles:{
+      0:{fontStyle:'bold',fillColor:[245,244,255],textColor:[80,70,160],cellWidth:52},
+      1:{textColor:[30,30,50]}
+    },
+    alternateRowStyles:{fillColor:[250,250,255]},
+    tableLineColor:[220,218,240],tableLineWidth:0.3,
+  });
+  y = doc.lastAutoTable.finalY + 8;
+
+  // Historial
+  doc.setFontSize(8); doc.setFont('helvetica','bold');
+  doc.setTextColor(...PDF_PURPLE);
+  doc.text('HISTORIAL DE CAMBIOS', 14, y);
+  doc.setDrawColor(...PDF_PURPLE); doc.setLineWidth(0.4);
+  doc.line(14, y+1.5, 85, y+1.5); y += 5;
+  doc.autoTable({
+    startY: y,
+    head:[['Estado','Nota del técnico','Fecha / Hora']],
+    body: o.historia.map(h=>[h.estado,h.nota,h.fecha]),
+    styles:{fontSize:9,cellPadding:4},
+    headStyles:{fillColor:PDF_PURPLE,textColor:PDF_WHITE,fontStyle:'bold',fontSize:8.5},
+    alternateRowStyles:{fillColor:[248,247,255]},
+    columnStyles:{
+      0:{cellWidth:38,fontStyle:'bold',textColor:[80,70,160]},
+      2:{cellWidth:48,textColor:PDF_MUTED},
+    },
+    tableLineColor:[220,218,240],tableLineWidth:0.3,
+    didParseCell:function(data){
+      if(data.section==='body'&&data.column.index===0){
+        const ec=estadoColor(data.cell.raw);
+        data.cell.styles.textColor=ec;
+      }
+    }
   });
 
-  let y=doc.lastAutoTable.finalY+10;
-  doc.setFontSize(11); doc.setFont('helvetica','bold');
-  doc.text('Historial de cambios', 14, y);
-  y+=5;
-  doc.autoTable({
-    startY:y,
-    head:[['Estado','Nota','Fecha/Hora']],
-    body:o.historia.map(h=>[h.estado,h.nota,h.fecha]),
-    styles:{fontSize:9,cellPadding:3},
-    headStyles:{fillColor:[108,99,255],textColor:[255,255,255]}
-  });
+  // Nota legal
+  y = doc.lastAutoTable.finalY + 10;
+  if(y < 240){
+    doc.setFillColor(...PDF_GRAY);
+    doc.roundedRect(14, y, W-28, 18, 3, 3, 'F');
+    doc.setFontSize(7.5); doc.setFont('helvetica','normal');
+    doc.setTextColor(...PDF_MUTED);
+    doc.text('Al retirar el equipo el cliente acepta el presupuesto y da conformidad con la reparación realizada.', 22, y+7);
+    doc.text('DarooCell no se responsabiliza por datos almacenados en el dispositivo.', 22, y+13);
+  }
 
   pdfFooter(doc);
   doc.save('DarooCell-Orden-'+o.id+'.pdf');
 }
 
+// ── PDF LISTADO ÓRDENES ──────────────────────────────────────
 function pdfOrdenes(){
   const q=(document.getElementById('search-ordenes').value||'').toLowerCase();
   const lista=ordenes.filter(o=>{
@@ -1344,74 +1373,121 @@ function pdfOrdenes(){
     const ms=!q||o.nombre.toLowerCase().includes(q)||o.id.toLowerCase().includes(q);
     return mf&&ms;
   });
-  if(!lista.length){ showToast('No hay órdenes para exportar',true); return; }
+  if(!lista.length){showToast('No hay órdenes para exportar',true);return;}
   const doc=getJsPDF();
-  pdfHeader(doc,'Listado de Órdenes');
+  const W=doc.internal.pageSize.getWidth();
+  pdfHeader(doc,'Listado de Órdenes','Generado: '+horaFull());
+  let y=34;
+  const stats=[
+    {label:'Total',val:lista.length,color:PDF_PURPLE},
+    {label:'En proceso',val:lista.filter(o=>['En revisión','Reparando'].includes(o.estado)).length,color:PDF_YELLOW},
+    {label:'Listos',val:lista.filter(o=>o.estado==='Listo').length,color:PDF_GREEN},
+    {label:'Entregados',val:lista.filter(o=>o.estado==='Entregado').length,color:PDF_BLUE},
+  ];
+  const bw=(W-28-9)/4;
+  stats.forEach((s,i)=>{
+    const x=14+i*(bw+3);
+    doc.setFillColor(...s.color);
+    doc.roundedRect(x,y,bw,18,2,2,'F');
+    doc.setFontSize(18);doc.setFont('helvetica','bold');doc.setTextColor(...PDF_WHITE);
+    doc.text(String(s.val),x+bw/2,y+11,{align:'center'});
+    doc.setFontSize(7.5);doc.setFont('helvetica','normal');
+    doc.text(s.label,x+bw/2,y+16,{align:'center'});
+  });
+  y+=24;
   doc.autoTable({
-    startY:22,
+    startY:y,
     head:[['ID','Cliente','Teléfono','Dispositivo','Falla','Estado','Presupuesto','Fecha']],
     body:lista.map(o=>[o.id,o.nombre,o.telefono,o.dispositivo,o.falla,o.estado,o.precio?pesosARS(o.precio):'—',o.fecha]),
-    styles:{fontSize:8,cellPadding:3},
-    headStyles:{fillColor:[108,99,255],textColor:[255,255,255]},
-    alternateRowStyles:{fillColor:[245,245,252]}
+    styles:{fontSize:8,cellPadding:3.5},
+    headStyles:{fillColor:PDF_PURPLE,textColor:PDF_WHITE,fontStyle:'bold',fontSize:8},
+    alternateRowStyles:{fillColor:[248,247,255]},
+    columnStyles:{0:{fontStyle:'bold',textColor:[108,99,200],cellWidth:22},6:{halign:'right'}},
+    tableLineColor:[220,218,240],tableLineWidth:0.3,
+    didParseCell:function(data){
+      if(data.section==='body'&&data.column.index===5){
+        const ec=estadoColor(data.cell.raw);
+        data.cell.styles.textColor=ec;
+        data.cell.styles.fontStyle='bold';
+      }
+    }
   });
   pdfFooter(doc);
   doc.save('DarooCell-Ordenes.pdf');
 }
 
+// ── PDF PRESUPUESTOS ─────────────────────────────────────────
 function pdfPresupuestos(){
   const lista=ordenes.filter(o=>o.precio>0&&o.estado!=='Cancelado');
-  if(!lista.length){ showToast('No hay presupuestos para exportar',true); return; }
+  if(!lista.length){showToast('No hay presupuestos para exportar',true);return;}
   const doc=getJsPDF();
-  pdfHeader(doc,'Listado de Presupuestos');
+  const W=doc.internal.pageSize.getWidth();
+  pdfHeader(doc,'Presupuestos Activos','Listado · '+horaFull());
   const total=lista.reduce((s,o)=>s+(o.precio||0),0);
-  doc.setFontSize(10); doc.setTextColor(80);
-  doc.text('Total en presupuestos activos: '+pesosARS(total), 14, 24);
+  let y=34;
+  doc.setFillColor(...PDF_GREEN);
+  doc.roundedRect(14,y,W-28,14,3,3,'F');
+  doc.setFontSize(9);doc.setFont('helvetica','bold');doc.setTextColor(...PDF_WHITE);
+  doc.text('TOTAL EN PRESUPUESTOS ACTIVOS:',22,y+9);
+  doc.setFontSize(13);
+  doc.text(pesosARS(total),W-22,y+9,{align:'right'});
+  y+=20;
   doc.autoTable({
-    startY:30,
+    startY:y,
     head:[['ID','Cliente','Dispositivo','Falla','Estado','Presupuesto ($ARS)','Fecha']],
     body:lista.map(o=>[o.id,o.nombre,o.dispositivo,o.falla,o.estado,pesosARS(o.precio),o.fecha]),
-    styles:{fontSize:9,cellPadding:3},
-    headStyles:{fillColor:[34,201,122],textColor:[255,255,255]},
-    alternateRowStyles:{fillColor:[240,252,247]},
-    columnStyles:{5:{halign:'right'}}
+    styles:{fontSize:8.5,cellPadding:4},
+    headStyles:{fillColor:PDF_GREEN,textColor:PDF_WHITE,fontStyle:'bold'},
+    alternateRowStyles:{fillColor:[242,252,247]},
+    columnStyles:{0:{fontStyle:'bold',textColor:[30,160,90],cellWidth:22},5:{halign:'right',fontStyle:'bold',textColor:[30,160,90]}},
+    tableLineColor:[200,235,215],tableLineWidth:0.3,
+    didParseCell:function(data){
+      if(data.section==='body'&&data.column.index===4){
+        const ec=estadoColor(data.cell.raw);
+        data.cell.styles.textColor=ec;
+        data.cell.styles.fontStyle='bold';
+      }
+    }
   });
   pdfFooter(doc);
   doc.save('DarooCell-Presupuestos.pdf');
 }
 
+// ── PDF CLIENTES ─────────────────────────────────────────────
 function pdfClientes(){
   const mapOrd={};
-  ordenes.forEach(o=>{
-    if(!mapOrd[o.telefono]) mapOrd[o.telefono]={count:0,total:0};
-    mapOrd[o.telefono].count++;
-    mapOrd[o.telefono].total+=(o.precio||0);
-  });
-  const todos=[]; const vis=new Set();
+  ordenes.forEach(o=>{if(!mapOrd[o.telefono])mapOrd[o.telefono]={count:0,total:0};mapOrd[o.telefono].count++;mapOrd[o.telefono].total+=(o.precio||0);});
+  const todos=[];const vis=new Set();
   clientesInd.forEach(c=>{vis.add(c.telefono);todos.push(c);});
-  ordenes.forEach(o=>{ if(!vis.has(o.telefono)){ vis.add(o.telefono); todos.push({nombre:o.nombre,telefono:o.telefono,email:o.email||'',dni:o.dni||'',fechaAlta:o.fecha}); } });
-  if(!todos.length){ showToast('No hay clientes para exportar',true); return; }
+  ordenes.forEach(o=>{if(!vis.has(o.telefono)){vis.add(o.telefono);todos.push({nombre:o.nombre,telefono:o.telefono,email:o.email||'',dni:o.dni||'',fechaAlta:o.fecha});}});
+  if(!todos.length){showToast('No hay clientes para exportar',true);return;}
   const doc=getJsPDF();
-  pdfHeader(doc,'Listado de Clientes');
+  const W=doc.internal.pageSize.getWidth();
+  pdfHeader(doc,'Clientes Registrados','Base de datos · '+horaFull());
+  let y=34;
+  doc.setFillColor(...PDF_BLUE);
+  doc.roundedRect(14,y,W-28,12,3,3,'F');
+  doc.setFontSize(9);doc.setFont('helvetica','bold');doc.setTextColor(...PDF_WHITE);
+  doc.text('Total de clientes registrados: '+todos.length,22,y+8);
+  y+=18;
   doc.autoTable({
-    startY:22,
+    startY:y,
     head:[['Nombre','Teléfono','Email','DNI','Órdenes','Total ($ARS)']],
-    body:todos.map(c=>{
-      const s=mapOrd[c.telefono]||{count:0,total:0};
-      return [c.nombre,c.telefono,c.email||'—',c.dni||'—',s.count,s.total?pesosARS(s.total):'—'];
-    }),
-    styles:{fontSize:9,cellPadding:3},
-    headStyles:{fillColor:[77,166,255],textColor:[255,255,255]},
-    alternateRowStyles:{fillColor:[240,246,255]},
-    columnStyles:{5:{halign:'right'}}
+    body:todos.map(c=>{const s=mapOrd[c.telefono]||{count:0,total:0};return[c.nombre,c.telefono,c.email||'—',c.dni||'—',s.count||'—',s.total?pesosARS(s.total):'—'];}),
+    styles:{fontSize:8.5,cellPadding:3.5},
+    headStyles:{fillColor:PDF_BLUE,textColor:PDF_WHITE,fontStyle:'bold'},
+    alternateRowStyles:{fillColor:[242,247,255]},
+    columnStyles:{0:{fontStyle:'bold'},5:{halign:'right',textColor:[30,120,200]}},
+    tableLineColor:[200,218,240],tableLineWidth:0.3,
   });
   pdfFooter(doc);
   doc.save('DarooCell-Clientes.pdf');
 }
 
+// ── PDF INFORME MES ──────────────────────────────────────────
 function pdfInformeMes(){
   const ahora=new Date();
-  pdfInformeParams(ahora.getMonth(), ahora.getFullYear());
+  pdfInformeParams(ahora.getMonth(),ahora.getFullYear());
 }
 
 function pdfInformeCustom(){
@@ -1421,49 +1497,88 @@ function pdfInformeCustom(){
 }
 
 function pdfInformeParams(mes,anio){
-  const lista=ordenes.filter(o=>{
-    const {mes:m,anio:a}=mesAnio(o.fecha);
-    return m===mes&&a===anio;
-  });
+  const lista=ordenes.filter(o=>{const{mes:m,anio:a}=mesAnio(o.fecha);return m===mes&&a===anio;});
   const total=lista.length;
   const reparadas=lista.filter(o=>['Listo','Entregado'].includes(o.estado)).length;
   const ingresos=lista.filter(o=>o.estado!=='Cancelado').reduce((s,o)=>s+(o.precio||0),0);
   const canceladas=lista.filter(o=>o.estado==='Cancelado').length;
-
+  const enProceso=lista.filter(o=>['En revisión','Reparando'].includes(o.estado)).length;
   const fallaCounts={};
   FALLAS.forEach(f=>fallaCounts[f]=0);
-  lista.forEach(o=>{ if(fallaCounts[o.falla]!==undefined) fallaCounts[o.falla]++; });
-
+  lista.forEach(o=>{if(fallaCounts[o.falla]!==undefined)fallaCounts[o.falla]++;else if(o.falla)fallaCounts['OTRAS FALLAS']=(fallaCounts['OTRAS FALLAS']||0)+1;});
   const doc=getJsPDF();
-  pdfHeader(doc,'Informe Mensual — '+MESES[mes]+' '+anio);
+  const W=doc.internal.pageSize.getWidth();
+  pdfHeader(doc,'Informe Mensual',MESES[mes]+' '+anio);
+  let y=34;
 
-  let y=24;
-  doc.setFontSize(10); doc.setTextColor(80);
-  doc.text(`Equipos ingresados: ${total}   |   Reparados: ${reparadas}   |   Cancelados: ${canceladas}   |   Ingresos: ${pesosARS(ingresos)}`, 14, y);
-  y+=8;
+  // Tarjetas resumen
+  const cards=[
+    {label:'Ingresados',val:total,color:PDF_PURPLE},
+    {label:'Reparados',val:reparadas,color:PDF_GREEN},
+    {label:'En proceso',val:enProceso,color:PDF_YELLOW},
+    {label:'Cancelados',val:canceladas,color:[255,95,109]},
+  ];
+  const cw=(W-28-9)/4;
+  cards.forEach((c,i)=>{
+    const x=14+i*(cw+3);
+    doc.setFillColor(...c.color);
+    doc.roundedRect(x,y,cw,22,3,3,'F');
+    doc.setFontSize(20);doc.setFont('helvetica','bold');doc.setTextColor(...PDF_WHITE);
+    doc.text(String(c.val),x+cw/2,y+13,{align:'center'});
+    doc.setFontSize(7.5);doc.setFont('helvetica','normal');
+    doc.text(c.label,x+cw/2,y+19,{align:'center'});
+  });
+  y+=28;
 
-  doc.setFontSize(11); doc.setFont('helvetica','bold'); doc.setTextColor(50);
-  doc.text('Resumen por tipo de falla', 14, y); y+=5;
+  // Banner ingresos
+  doc.setFillColor(...PDF_DARK);
+  doc.roundedRect(14,y,W-28,14,3,3,'F');
+  doc.setFontSize(9);doc.setFont('helvetica','bold');
+  doc.setTextColor(200,195,255);
+  doc.text('INGRESOS DEL MES:',22,y+9);
+  doc.setTextColor(...PDF_YELLOW);doc.setFontSize(13);
+  doc.text(pesosARS(ingresos),W-22,y+9,{align:'right'});
+  y+=20;
+
+  // Tabla fallas
+  doc.setFontSize(8);doc.setFont('helvetica','bold');doc.setTextColor(...PDF_PURPLE);
+  doc.text('DISTRIBUCIÓN POR TIPO DE FALLA',14,y);
+  doc.setDrawColor(...PDF_PURPLE);doc.setLineWidth(0.4);
+  doc.line(14,y+1.5,110,y+1.5);y+=5;
   doc.autoTable({
     startY:y,
-    head:[['Tipo de falla','Cantidad']],
-    body:FALLAS.map(f=>[f,fallaCounts[f]]),
-    styles:{fontSize:10,cellPadding:3},
-    headStyles:{fillColor:[108,99,255],textColor:[255,255,255]},
-    margin:{left:14}
+    head:[['Tipo de falla','Cantidad','% del mes']],
+    body:FALLAS.map(f=>[f,fallaCounts[f],total>0?Math.round(fallaCounts[f]/total*100)+'%':'0%']),
+    styles:{fontSize:9,cellPadding:4},
+    headStyles:{fillColor:PDF_PURPLE,textColor:PDF_WHITE,fontStyle:'bold',fontSize:8.5},
+    alternateRowStyles:{fillColor:[248,247,255]},
+    columnStyles:{0:{fontStyle:'bold',textColor:[80,70,160]},1:{halign:'center',textColor:[108,99,200]},2:{halign:'center',textColor:PDF_MUTED}},
+    tableLineColor:[220,218,240],tableLineWidth:0.3,
+    margin:{left:14,right:14},tableWidth:110,
   });
   y=doc.lastAutoTable.finalY+10;
 
   if(lista.length){
-    doc.setFontSize(11); doc.setFont('helvetica','bold');
-    doc.text('Detalle de órdenes del mes', 14, y); y+=5;
+    doc.setFontSize(8);doc.setFont('helvetica','bold');doc.setTextColor(...PDF_PURPLE);
+    doc.text('DETALLE DE ÓRDENES — '+MESES[mes].toUpperCase()+' '+anio,14,y);
+    doc.setDrawColor(...PDF_PURPLE);doc.setLineWidth(0.4);
+    doc.line(14,y+1.5,140,y+1.5);y+=5;
     doc.autoTable({
       startY:y,
       head:[['ID','Cliente','Dispositivo','Falla','Estado','Presupuesto']],
       body:lista.map(o=>[o.id,o.nombre,o.dispositivo,o.falla,o.estado,o.precio?pesosARS(o.precio):'—']),
-      styles:{fontSize:8,cellPadding:3},
-      headStyles:{fillColor:[34,201,122],textColor:[255,255,255]},
-      alternateRowStyles:{fillColor:[240,252,247]}
+      styles:{fontSize:8,cellPadding:3.5},
+      headStyles:{fillColor:PDF_GREEN,textColor:PDF_WHITE,fontStyle:'bold',fontSize:8},
+      alternateRowStyles:{fillColor:[242,252,247]},
+      columnStyles:{0:{fontStyle:'bold',textColor:[30,160,90],cellWidth:22},5:{halign:'right',textColor:[30,160,90]}},
+      tableLineColor:[200,235,215],tableLineWidth:0.3,
+      didParseCell:function(data){
+        if(data.section==='body'&&data.column.index===4){
+          const ec=estadoColor(data.cell.raw);
+          data.cell.styles.textColor=ec;
+          data.cell.styles.fontStyle='bold';
+        }
+      }
     });
   }
   pdfFooter(doc);
