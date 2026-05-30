@@ -251,6 +251,12 @@ select option{background:var(--bg3);color:var(--text);}
 .empty-title{font-size:15px;font-weight:600;color:var(--text);margin-bottom:.5rem;}
 .empty-sub{font-size:13px;}
 
+/* LICENCIA */
+.licencia-bar{display:flex;align-items:center;justify-content:space-between;padding:.6rem 1.25rem;border-radius:var(--radius-sm);font-size:12px;font-weight:600;margin-bottom:1.25rem;border:1px solid;}
+.licencia-ok{background:rgba(34,201,122,0.08);color:var(--green);border-color:rgba(34,201,122,0.25);}
+.licencia-warn{background:rgba(245,166,35,0.1);color:var(--yellow);border-color:rgba(245,166,35,0.3);}
+.licencia-vencida{background:rgba(255,95,109,0.1);color:var(--red);border-color:rgba(255,95,109,0.3);}
+
 /* scrollbar */
 ::-webkit-scrollbar{width:5px;height:5px;}
 ::-webkit-scrollbar-track{background:transparent;}
@@ -347,6 +353,7 @@ select option{background:var(--bg3);color:var(--text);}
 
     <!-- DASHBOARD -->
     <div id="page-dashboard" class="page active">
+      <div id="licencia-bar"></div>
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;flex-wrap:wrap;gap:.75rem">
         <div style="font-size:13px;color:var(--muted)">Mostrando datos del mes actual · <span id="dash-mes-label" style="color:var(--text);font-weight:600"></span></div>
         <button class="btn btn-pdf" onclick="pdfInformeMes()">📄 Exportar informe del mes</button>
@@ -636,6 +643,54 @@ async function deleteCliente(telefono){
   await sb('DELETE', 'clientes', null, `?tenant_id=eq.${TENANT_ID}&telefono=eq.${telefono}`);
 }
 
+// ═══════════════════════════════════════════════════════════
+//  LICENCIA
+// ═══════════════════════════════════════════════════════════
+async function checkLicencia(){
+  try {
+    const data = await sb('GET', 'tenants', null, `?id=eq.${TENANT_ID}`);
+    if(!data || !data.length) return;
+    const tenant = data[0];
+
+    if(tenant.activo === false){
+      doLogout();
+      document.getElementById('login-error').textContent = 'Cuenta suspendida. Contactá a DarooCell.';
+      document.getElementById('login-error').style.display = 'block';
+      return;
+    }
+
+    const bar = document.getElementById('licencia-bar');
+    if(!bar) return;
+
+    if(!tenant.vence_en){
+      bar.innerHTML = '<div class="licencia-bar licencia-ok">✅ Licencia activa · Sin fecha de vencimiento configurada</div>';
+      return;
+    }
+
+    const hoyDate = new Date();
+    hoyDate.setHours(0,0,0,0);
+    const venceDate = new Date(tenant.vence_en + 'T00:00:00');
+    const diasRestantes = Math.ceil((venceDate - hoyDate) / (1000 * 60 * 60 * 24));
+
+    if(diasRestantes < 0){
+      doLogout();
+      document.getElementById('login-error').textContent = 'Tu licencia venció. Contactá a DarooCell para renovar.';
+      document.getElementById('login-error').style.display = 'block';
+      return;
+    } else if(diasRestantes <= 5){
+      bar.innerHTML = `<div class="licencia-bar licencia-vencida">⚠️ Tu licencia vence en <strong>${diasRestantes} día${diasRestantes!==1?'s':''}</strong> · Contactá a DarooCell para renovar</div>`;
+    } else if(diasRestantes <= 15){
+      bar.innerHTML = `<div class="licencia-bar licencia-warn">🔔 Tu licencia vence en <strong>${diasRestantes} días</strong> · Renovar pronto</div>`;
+    } else {
+      const opciones = {day:'2-digit',month:'2-digit',year:'numeric'};
+      const fechaStr = venceDate.toLocaleDateString('es-AR', opciones);
+      bar.innerHTML = `<div class="licencia-bar licencia-ok">✅ Licencia activa · Vence el ${fechaStr} (${diasRestantes} días restantes)</div>`;
+    }
+  } catch(e){
+    console.error('Error verificando licencia:', e);
+  }
+}
+
 async function loadData(){
   try {
     const [ords, clis] = await Promise.all([
@@ -716,6 +771,7 @@ function doLogin(){
       document.getElementById('sb-name').textContent = info.name;
       document.getElementById('sb-avatar').textContent = info.name.slice(0,2).toUpperCase();
       renderDashboard(); updateBadge(); initInformeSelects(); actualizarAutocomplete();
+      checkLicencia();
     }).catch(()=>{
       loginBtn.textContent = 'Ingresar al sistema';
       loginBtn.disabled = false;
@@ -1491,6 +1547,7 @@ function avatarColor(n){ let h=0; for(let i=0;i<n.length;i++) h+=n.charCodeAt(i)
       document.getElementById('sb-name').textContent = info.name;
       document.getElementById('sb-avatar').textContent = info.name.slice(0,2).toUpperCase();
       renderDashboard(); updateBadge(); initInformeSelects(); actualizarAutocomplete();
+      checkLicencia();
     });
   }
 })();
