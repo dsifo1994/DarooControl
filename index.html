@@ -349,7 +349,7 @@ select option{background:var(--bg3);color:var(--text);}
         <div class="tech-role">DarooCell</div>
       </div>
     </div>
-    <div id="sidebar-licencia" style="padding:.75rem 1.5rem 0"></div>
+    <div id="sidebar-licencia" style="padding:0 1.5rem .75rem"></div>
   </div>
 </aside>
 
@@ -368,7 +368,6 @@ select option{background:var(--bg3);color:var(--text);}
 
     <!-- DASHBOARD -->
     <div id="page-dashboard" class="page active">
-      <div id="licencia-bar"></div>
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;flex-wrap:wrap;gap:.75rem">
         <div style="font-size:13px;color:var(--muted)">Mostrando datos del mes actual · <span id="dash-mes-label" style="color:var(--text);font-weight:600"></span></div>
         <button class="btn btn-pdf" onclick="pdfInformeMes()">📄 Exportar informe del mes</button>
@@ -674,11 +673,9 @@ async function checkLicencia(){
       return;
     }
 
-    const bar = document.getElementById('licencia-bar');
     const sbLic = document.getElementById('sidebar-licencia');
 
     if(!tenant.vence_en){
-      if(bar) bar.innerHTML = '<div class="licencia-bar licencia-ok">✅ Licencia activa · Sin fecha de vencimiento configurada</div>';
       if(sbLic) sbLic.innerHTML = '<div class="sb-licencia sb-lic-ok"><div class="sb-lic-title">📅 Licencia</div><div class="sb-lic-fecha">Sin vencimiento</div></div>';
       return;
     }
@@ -699,13 +696,10 @@ async function checkLicencia(){
       document.getElementById('login-error').style.display = 'block';
       return;
     } else if(diasRestantes <= 5){
-      if(bar) bar.innerHTML = `<div class="licencia-bar licencia-vencida">⚠️ Tu licencia vence en <strong>${diasRestantes} día${diasRestantes!==1?'s':''}</strong> · Contactá a DarooCell para renovar</div>`;
       if(sbLic) sbLic.innerHTML = `<div class="sb-licencia sb-lic-danger"><div class="sb-lic-title">⚠️ Licencia</div><div class="sb-lic-fecha">Vence: ${fechaStr}</div><div class="sb-lic-bar-wrap"><div class="sb-lic-bar" style="width:${pct}%"></div></div><div class="sb-lic-dias">${diasRestantes} día${diasRestantes!==1?'s':''} restante${diasRestantes!==1?'s':''} · Renovar ya</div></div>`;
     } else if(diasRestantes <= 15){
-      if(bar) bar.innerHTML = `<div class="licencia-bar licencia-warn">🔔 Tu licencia vence en <strong>${diasRestantes} días</strong> · Renovar pronto</div>`;
       if(sbLic) sbLic.innerHTML = `<div class="sb-licencia sb-lic-warn"><div class="sb-lic-title">🔔 Licencia</div><div class="sb-lic-fecha">Vence: ${fechaStr}</div><div class="sb-lic-bar-wrap"><div class="sb-lic-bar" style="width:${pct}%"></div></div><div class="sb-lic-dias">${diasRestantes} días restantes</div></div>`;
     } else {
-      if(bar) bar.innerHTML = `<div class="licencia-bar licencia-ok">✅ Licencia activa · Vence el ${fechaStr} (${diasRestantes} días restantes)</div>`;
       if(sbLic) sbLic.innerHTML = `<div class="sb-licencia sb-lic-ok"><div class="sb-lic-title">📅 Licencia</div><div class="sb-lic-fecha">Vence: ${fechaStr}</div><div class="sb-lic-bar-wrap"><div class="sb-lic-bar" style="width:${pct}%"></div></div><div class="sb-lic-dias">${diasRestantes} días restantes</div></div>`;
     }
   } catch(e){
