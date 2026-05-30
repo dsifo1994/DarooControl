@@ -544,6 +544,35 @@ select option{background:var(--bg3);color:var(--text);}
 
 <script>
 // ═══════════════════════════════════════════════════════════
+//  CONFIGURACIÓN SUPABASE
+//  REEMPLAZÁ estos valores con los tuyos de supabase.com
+// ═══════════════════════════════════════════════════════════
+const SUPABASE_URL = 'https://okzvxjlxidmydmxueihf.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9renZ4amx4aWRteWRteHVlaWhmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODAwODg0MzUsImV4cCI6MjA5NTY2NDQzNX0.sevF9AukKhXtN9NGV9tsahmlW2fwygbeCMLxiXFSB14';
+
+// ID de tu tenant (el que creaste en el SQL, o el de tu negocio)
+// Cada cliente que alquilas el sistema tiene un TENANT_ID diferente
+const TENANT_ID = 'aaaaaaaa-0000-0000-0000-000000000001';
+
+// ── Helper para llamar a Supabase REST API ─────────────────
+async function sb(method, table, body=null, params=''){
+  const url = `${SUPABASE_URL}/rest/v1/${table}${params}`;
+  const headers = {
+    'apikey': SUPABASE_ANON_KEY,
+    'Authorization': 'Bearer ' + SUPABASE_ANON_KEY,
+    'Content-Type': 'application/json',
+    'Prefer': method==='POST' ? 'return=representation' : method==='PATCH'||method==='DELETE' ? 'return=representation' : ''
+  };
+  const r = await fetch(url, { method, headers, body: body ? JSON.stringify(body) : null });
+  if(!r.ok){
+    const err = await r.text();
+    throw new Error(`Supabase ${method} ${table}: ${err}`);
+  }
+  const text = await r.text();
+  return text ? JSON.parse(text) : [];
+}
+
+// ═══════════════════════════════════════════════════════════
 //  DATA
 // ═══════════════════════════════════════════════════════════
 let ordenes  = [];
@@ -552,64 +581,104 @@ let editandoId = null;
 let editandoClienteId = null;
 let filtroActual = 'Todos';
 
-// ── STORAGE PERSISTENTE ──────────────────────────────────────
-// ── STORAGE CHUNKED (500 órdenes por clave = ~25MB capacidad total) ──
-const CHUNK_SIZE = 500;
-
-async function saveOrdenes(){
-  try {
-    const chunks = Math.ceil(ordenes.length / CHUNK_SIZE) || 1;
-    for(let i = 0; i < chunks; i++){
-      const slice = ordenes.slice(i * CHUNK_SIZE, (i+1) * CHUNK_SIZE);
-      await window.storage.set('dc_ordenes_' + i, JSON.stringify(slice));
-    }
-    await window.storage.set('dc_ordenes_meta', JSON.stringify({chunks}));
-    // limpiar chunks viejos que ya no se usan
-    for(let i = chunks; i < chunks + 10; i++){
-      try { await window.storage.delete('dc_ordenes_' + i); } catch(e){}
-    }
-  } catch(e) {
-    localStorage.setItem('dc_ordenes', JSON.stringify(ordenes));
-  }
+// ── STORAGE: Supabase como backend ───────────────────────────
+async function saveOrden(orden){
+  // Nuevo → INSERT, existente → UPDATE
+  const payload = {
+    tenant_id:    TENANT_ID,
+    orden_id:     orden.id,
+    nombre:       orden.nombre,
+    telefono:     orden.telefono,
+    email:        orden.email||null,
+    dni:          orden.dni||null,
+    dispositivo:  orden.dispositivo,
+    imei:         orden.imei||null,
+    falla:        orden.falla,
+    estado:       orden.estado,
+    precio:       orden.precio||0,
+    obs:          orden.obs||null,
+    fecha:        orden.fecha,
+    historia:     orden.historia,
+    actualizado_en: new Date().toISOString()
+  };
+  await sb('POST', 'ordenes', payload, '');
 }
 
-async function saveClientes(){
-  try {
-    await window.storage.set('dc_clientes', JSON.stringify(clientesInd));
-  } catch(e) {
-    localStorage.setItem('dc_clientes', JSON.stringify(clientesInd));
-  }
+async function updateOrden(orden){
+  const payload = {
+    estado:       orden.estado,
+    precio:       orden.precio||0,
+    obs:          orden.obs||null,
+    historia:     orden.historia,
+    actualizado_en: new Date().toISOString()
+  };
+  await sb('PATCH', 'ordenes', payload, `?tenant_id=eq.${TENANT_ID}&orden_id=eq.${orden.id}`);
+}
+
+async function deleteOrden(id){
+  await sb('DELETE', 'ordenes', null, `?tenant_id=eq.${TENANT_ID}&orden_id=eq.${id}`);
+}
+
+async function saveCliente(c){
+  const payload = {
+    tenant_id:  TENANT_ID,
+    nombre:     c.nombre,
+    telefono:   c.telefono,
+    email:      c.email||null,
+    dni:        c.dni||null,
+    fecha_alta: c.fechaAlta||hoy()
+  };
+  // upsert por telefono+tenant
+  await sb('POST', 'clientes', payload, '?on_conflict=tenant_id,telefono');
+}
+
+async function deleteCliente(telefono){
+  await sb('DELETE', 'clientes', null, `?tenant_id=eq.${TENANT_ID}&telefono=eq.${telefono}`);
 }
 
 async function loadData(){
   try {
-    // intentar cargar con sistema chunked nuevo
-    const meta = await window.storage.get('dc_ordenes_meta').catch(()=>null);
-    if(meta){
-      const {chunks} = JSON.parse(meta.value);
-      let all = [];
-      for(let i = 0; i < chunks; i++){
-        const chunk = await window.storage.get('dc_ordenes_' + i).catch(()=>null);
-        if(chunk) all = all.concat(JSON.parse(chunk.value));
-      }
-      ordenes = all;
-    } else {
-      // fallback: clave única vieja
-      const ro = await window.storage.get('dc_ordenes').catch(()=>null);
-      ordenes = ro ? JSON.parse(ro.value) : JSON.parse(localStorage.getItem('dc_ordenes') || '[]');
-    }
-    const rc = await window.storage.get('dc_clientes').catch(()=>null);
-    clientesInd = rc ? JSON.parse(rc.value) : JSON.parse(localStorage.getItem('dc_clientes') || '[]');
+    const [ords, clis] = await Promise.all([
+      sb('GET', 'ordenes', null, `?tenant_id=eq.${TENANT_ID}&order=creado_en.desc`),
+      sb('GET', 'clientes', null, `?tenant_id=eq.${TENANT_ID}&order=nombre.asc`)
+    ]);
+    // Mapear de formato Supabase al formato interno de la app
+    ordenes = ords.map(o => ({
+      id:          o.orden_id,
+      nombre:      o.nombre,
+      telefono:    o.telefono,
+      email:       o.email||'',
+      dni:         o.dni||'',
+      dispositivo: o.dispositivo,
+      imei:        o.imei||'',
+      falla:       o.falla,
+      estado:      o.estado,
+      precio:      o.precio||0,
+      obs:         o.obs||'',
+      fecha:       o.fecha,
+      historia:    o.historia||[]
+    }));
+    clientesInd = clis.map(c => ({
+      id:        c.id,
+      nombre:    c.nombre,
+      telefono:  c.telefono,
+      email:     c.email||'',
+      dni:       c.dni||'',
+      fechaAlta: c.fecha_alta||''
+    }));
   } catch(e) {
-    ordenes     = JSON.parse(localStorage.getItem('dc_ordenes')  || '[]');
-    clientesInd = JSON.parse(localStorage.getItem('dc_clientes') || '[]');
+    console.error('Error cargando datos de Supabase:', e);
+    showToast('Error conectando con la base de datos', true);
   }
 }
 
-function genId(){
-  const n = (ordenes.length + 1).toString().padStart(4,'0');
-  return 'DC-' + n;
+async function genId(){
+  // Calcular el siguiente número basado en órdenes locales
+  const nums = ordenes.map(o => parseInt(o.id.split('-')[1]||0)).filter(n=>!isNaN(n));
+  const next = nums.length ? Math.max(...nums) + 1 : 1;
+  return 'DC-' + next.toString().padStart(4,'0');
 }
+
 function hoy(){
   return new Date().toLocaleDateString('es-AR',{day:'2-digit',month:'2-digit',year:'numeric'});
 }
@@ -617,7 +686,6 @@ function horaFull(){
   return new Date().toLocaleString('es-AR',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'});
 }
 function mesAnio(dateStr){
-  // dateStr = dd/mm/yyyy
   const p = dateStr.split('/');
   return { mes: parseInt(p[1])-1, anio: parseInt(p[2]) };
 }
@@ -626,7 +694,7 @@ function pesosARS(n){
 }
 
 // ═══════════════════════════════════════════════════════════
-//  LOGIN
+//  LOGIN (credenciales simples — sin Supabase Auth por ahora)
 // ═══════════════════════════════════════════════════════════
 const USERS = { admin:{ pass:'Thiago2025', name:'Administrador' } };
 
@@ -636,6 +704,9 @@ function doLogin(){
   const err = document.getElementById('login-error');
   if(USERS[u] && USERS[u].pass === p){
     err.style.display='none';
+    const loginBtn = document.querySelector('#login-screen .btn-primary');
+    loginBtn.textContent = '⏳ Cargando datos...';
+    loginBtn.disabled = true;
     loadData().then(()=>{
       localStorage.setItem('dc_session', u);
       document.getElementById('login-screen').style.display='none';
@@ -645,6 +716,10 @@ function doLogin(){
       document.getElementById('sb-name').textContent = info.name;
       document.getElementById('sb-avatar').textContent = info.name.slice(0,2).toUpperCase();
       renderDashboard(); updateBadge(); initInformeSelects(); actualizarAutocomplete();
+    }).catch(()=>{
+      loginBtn.textContent = 'Ingresar al sistema';
+      loginBtn.disabled = false;
+      showToast('Error al conectar con Supabase', true);
     });
   } else {
     err.style.display='block';
@@ -728,7 +803,8 @@ async function guardarOrden(){
   const precio = parseInt(document.getElementById('f-precio').value)||0;
   const estado = document.getElementById('f-estado').value;
   const orden = {
-    id:genId(), nombre, telefono,
+    id: await genId(),
+    nombre, telefono,
     email: document.getElementById('f-email').value.trim(),
     dni:   document.getElementById('f-dni').value.trim(),
     dispositivo,
@@ -738,21 +814,28 @@ async function guardarOrden(){
     fecha: hoy(),
     historia:[{estado, nota:'Orden creada', fecha:horaFull()}]
   };
-  ordenes.unshift(orden);
-  await saveOrdenes();
-  // auto-agregar cliente si no existe
-  const existe = clientesInd.find(c=>c.telefono===telefono);
-  if(!existe){
-    clientesInd.push({
-      id:'CLI-'+Date.now(), nombre, telefono,
-      email: orden.email, dni: orden.dni, fechaAlta: hoy()
-    });
-    await saveClientes();
+
+  try {
+    await saveOrden(orden);
+    ordenes.unshift(orden);
+    // auto-agregar cliente si no existe
+    const existe = clientesInd.find(c=>c.telefono===telefono);
+    if(!existe){
+      const nuevoCliente = {
+        id:'CLI-'+Date.now(), nombre, telefono,
+        email: orden.email, dni: orden.dni, fechaAlta: hoy()
+      };
+      await saveCliente(nuevoCliente);
+      clientesInd.push(nuevoCliente);
+    }
+    closeModal('nueva-orden');
+    limpiarFormOrden();
+    renderDashboard(); renderOrdenes(); updateBadge(); actualizarAutocomplete();
+    showToast('Orden '+orden.id+' creada ✓');
+  } catch(e) {
+    showToast('Error al guardar la orden', true);
+    console.error(e);
   }
-  closeModal('nueva-orden');
-  limpiarFormOrden();
-  renderDashboard(); renderOrdenes(); updateBadge(); actualizarAutocomplete();
-  showToast('Orden '+orden.id+' creada');
 }
 
 function limpiarFormOrden(){
@@ -832,7 +915,6 @@ function verDetalle(id){
   const o=ordenes.find(x=>x.id===id); if(!o) return;
   document.getElementById('detail-title').textContent='Orden '+o.id;
   const steps=['Recibido','En revisión','Reparando','Listo','Entregado'];
-  // Si está cancelado mostramos el último estado registrado como actual
   const estadoTl = o.estado==='Cancelado' ? (o.historia.length>1 ? o.historia[o.historia.length-2].estado : 'Recibido') : o.estado;
   const idx=steps.indexOf(estadoTl);
   const tl=steps.map((s,i)=>{
@@ -881,7 +963,6 @@ function abrirEditar(id){
   const o=ordenes.find(x=>x.id===id); if(!o) return;
   document.getElementById('edit-precio').value=o.precio||'';
   document.getElementById('edit-nota').value='';
-  // Forzar selección correcta del estado actual
   const sel=document.getElementById('edit-estado');
   Array.from(sel.options).forEach(opt=>{ opt.selected = opt.value===o.estado; });
   openModal('editar');
@@ -893,11 +974,16 @@ async function guardarEdicion(){
   const nota=document.getElementById('edit-nota').value.trim()||'Estado actualizado';
   o.estado=ns; o.precio=np;
   o.historia.push({estado:ns,nota,fecha:horaFull()});
-  try { await saveOrdenes(); } catch(e){ console.warn('saveOrdenes error',e); }
-  closeModal('editar');
-  renderOrdenes(); renderDashboard(); renderPresupuestos();
-  showToast('Orden '+o.id+' actualizada');
-  updateBadge();
+  try {
+    await updateOrden(o);
+    closeModal('editar');
+    renderOrdenes(); renderDashboard(); renderPresupuestos();
+    showToast('Orden '+o.id+' actualizada ✓');
+    updateBadge();
+  } catch(e) {
+    showToast('Error al actualizar', true);
+    console.error(e);
+  }
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -905,10 +991,14 @@ async function guardarEdicion(){
 // ═══════════════════════════════════════════════════════════
 async function eliminarOrden(id){
   if(!confirm('¿Eliminar la orden '+id+'? Esta acción no se puede deshacer.')) return;
-  ordenes=ordenes.filter(o=>o.id!==id);
-  await saveOrdenes();
-  renderOrdenes(); renderDashboard(); renderClientes(); renderPresupuestos();
-  updateBadge(); showToast('Orden eliminada');
+  try {
+    await deleteOrden(id);
+    ordenes=ordenes.filter(o=>o.id!==id);
+    renderOrdenes(); renderDashboard(); renderClientes(); renderPresupuestos();
+    updateBadge(); showToast('Orden eliminada');
+  } catch(e) {
+    showToast('Error al eliminar', true);
+  }
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -941,7 +1031,6 @@ function renderDashboard(){
   document.getElementById('stat-listas').textContent=listas;
   document.getElementById('stat-ingresos').textContent=pesosARS(ingresosMes);
 
-  // Íconos se iluminan cuando tienen datos
   const iconMes     = document.querySelector('.stat-card.purple .stat-icon');
   const iconProceso = document.querySelector('.stat-card.yellow .stat-icon');
   const iconListas  = document.querySelector('.stat-card.green  .stat-icon');
@@ -951,7 +1040,6 @@ function renderDashboard(){
   if(iconListas){  iconListas.style.opacity  = listas  > 0 ? '0.95' : '0.08'; iconListas.style.filter  = listas  > 0 ? 'drop-shadow(0 0 10px var(--green))'  : 'none'; }
   if(iconIngres){  iconIngres.style.opacity  = ingresosMes > 0 ? '0.90' : '0.08'; iconIngres.style.filter  = ingresosMes > 0 ? 'drop-shadow(0 0 8px var(--green))'  : 'none'; }
 
-  // recientes
   const recEl=document.getElementById('recent-list');
   const rec=ordenes.slice(0,5);
   recEl.innerHTML=rec.length?rec.map(o=>`
@@ -961,7 +1049,6 @@ function renderDashboard(){
       ${statusBadge(o.estado)}
     </div>`).join(''):`<div class="empty-state" style="padding:2rem"><div class="empty-icon">📋</div><div class="empty-sub">No hay órdenes aún</div></div>`;
 
-  // listas
   const rEl=document.getElementById('ready-list');
   const readyOr=ordenes.filter(o=>o.estado==='Listo');
   rEl.innerHTML=readyOr.length?readyOr.map(o=>`
@@ -980,30 +1067,34 @@ async function guardarCliente(){
   const telefono=document.getElementById('nc-telefono').value.trim();
   if(!nombre||!telefono){ showToast('Nombre y teléfono son obligatorios',true); return; }
 
-  if(editandoClienteId){
-    const c=clientesInd.find(x=>x.id===editandoClienteId);
-    if(c){
-      c.nombre=nombre; c.telefono=telefono;
-      c.email=document.getElementById('nc-email').value.trim();
-      c.dni=document.getElementById('nc-dni').value.trim();
+  const clienteData = {
+    id: editandoClienteId||('CLI-'+Date.now()),
+    nombre, telefono,
+    email:document.getElementById('nc-email').value.trim(),
+    dni:document.getElementById('nc-dni').value.trim(),
+    fechaAlta: hoy()
+  };
+
+  try {
+    await saveCliente(clienteData);
+    if(editandoClienteId){
+      const idx = clientesInd.findIndex(x=>x.id===editandoClienteId);
+      if(idx>=0) clientesInd[idx] = clienteData;
+    } else {
+      const existe=clientesInd.find(c=>c.telefono===telefono);
+      if(existe){ showToast('Ya existe un cliente con ese teléfono',true); return; }
+      clientesInd.push(clienteData);
     }
     editandoClienteId=null;
     document.getElementById('cliente-modal-title').textContent='Nuevo cliente';
-  } else {
-    const existe=clientesInd.find(c=>c.telefono===telefono);
-    if(existe){ showToast('Ya existe un cliente con ese teléfono',true); return; }
-    clientesInd.push({
-      id:'CLI-'+Date.now(), nombre, telefono,
-      email:document.getElementById('nc-email').value.trim(),
-      dni:document.getElementById('nc-dni').value.trim(),
-      fechaAlta:hoy()
-    });
+    closeModal('nuevo-cliente');
+    limpiarFormCliente();
+    renderClientes(); actualizarAutocomplete();
+    showToast('Cliente guardado ✓');
+  } catch(e) {
+    showToast('Error al guardar cliente', true);
+    console.error(e);
   }
-  await saveClientes();
-  closeModal('nuevo-cliente');
-  limpiarFormCliente();
-  renderClientes(); actualizarAutocomplete();
-  showToast('Cliente guardado');
 }
 
 function limpiarFormCliente(){
@@ -1023,20 +1114,24 @@ function editarCliente(id){
 
 async function eliminarCliente(id){
   if(!confirm('¿Eliminar este cliente?')) return;
-  clientesInd=clientesInd.filter(c=>c.id!==id);
-  await saveClientes(); renderClientes(); showToast('Cliente eliminado');
+  const c = clientesInd.find(x=>x.id===id); if(!c) return;
+  try {
+    await deleteCliente(c.telefono);
+    clientesInd=clientesInd.filter(x=>x.id!==id);
+    renderClientes(); showToast('Cliente eliminado');
+  } catch(e) {
+    showToast('Error al eliminar cliente', true);
+  }
 }
 
 function renderClientes(){
   const q=(document.getElementById('search-clientes').value||'').toLowerCase();
-  // Merge clientes independientes + clientes de órdenes
   const mapOrd={};
   ordenes.forEach(o=>{
     if(!mapOrd[o.telefono]) mapOrd[o.telefono]={count:0,total:0};
     mapOrd[o.telefono].count++;
     mapOrd[o.telefono].total+=(o.precio||0);
   });
-  // build unified list: independientes primero, luego de órdenes no duplicados
   const todos=[];
   const telosVisto=new Set();
   clientesInd.forEach(c=>{ telosVisto.add(c.telefono); todos.push({...c, fromInd:true}); });
@@ -1127,7 +1222,6 @@ function renderInforme(){
   const ingresos=lista.filter(o=>o.estado!=='Cancelado').reduce((s,o)=>s+(o.precio||0),0);
   const canceladas=lista.filter(o=>o.estado==='Cancelado').length;
 
-  // fallas
   const fallaCounts={};
   FALLAS.forEach(f=>fallaCounts[f]=0);
   lista.forEach(o=>{ if(fallaCounts[o.falla]!==undefined) fallaCounts[o.falla]++; else if(o.falla) fallaCounts['OTRAS FALLAS']=(fallaCounts['OTRAS FALLAS']||0)+1; });
@@ -1200,7 +1294,6 @@ function pdfFooter(doc){
   }
 }
 
-// PDF orden individual
 function pdfOrdenIndividual(id){
   const o=ordenes.find(x=>x.id===id); if(!o) return;
   const doc=getJsPDF();
@@ -1228,7 +1321,6 @@ function pdfOrdenIndividual(id){
     columnStyles:{0:{fontStyle:'bold',cellWidth:50}}
   });
 
-  // Historial
   let y=doc.lastAutoTable.finalY+10;
   doc.setFontSize(11); doc.setFont('helvetica','bold');
   doc.text('Historial de cambios', 14, y);
@@ -1245,7 +1337,6 @@ function pdfOrdenIndividual(id){
   doc.save('DarooCell-Orden-'+o.id+'.pdf');
 }
 
-// PDF lista de órdenes
 function pdfOrdenes(){
   const q=(document.getElementById('search-ordenes').value||'').toLowerCase();
   const lista=ordenes.filter(o=>{
@@ -1254,7 +1345,7 @@ function pdfOrdenes(){
     return mf&&ms;
   });
   if(!lista.length){ showToast('No hay órdenes para exportar',true); return; }
-  const doc=getJsPDF(); doc.setOrientation='landscape';
+  const doc=getJsPDF();
   pdfHeader(doc,'Listado de Órdenes');
   doc.autoTable({
     startY:22,
@@ -1268,7 +1359,6 @@ function pdfOrdenes(){
   doc.save('DarooCell-Ordenes.pdf');
 }
 
-// PDF presupuestos
 function pdfPresupuestos(){
   const lista=ordenes.filter(o=>o.precio>0&&o.estado!=='Cancelado');
   if(!lista.length){ showToast('No hay presupuestos para exportar',true); return; }
@@ -1290,7 +1380,6 @@ function pdfPresupuestos(){
   doc.save('DarooCell-Presupuestos.pdf');
 }
 
-// PDF clientes
 function pdfClientes(){
   const mapOrd={};
   ordenes.forEach(o=>{
@@ -1320,13 +1409,11 @@ function pdfClientes(){
   doc.save('DarooCell-Clientes.pdf');
 }
 
-// PDF informe mensual (mes actual desde dashboard)
 function pdfInformeMes(){
   const ahora=new Date();
   pdfInformeParams(ahora.getMonth(), ahora.getFullYear());
 }
 
-// PDF informe mensual (desde selector)
 function pdfInformeCustom(){
   const mes=parseInt(document.getElementById('inf-mes').value);
   const anio=parseInt(document.getElementById('inf-anio').value)||new Date().getFullYear();
@@ -1355,7 +1442,6 @@ function pdfInformeParams(mes,anio){
   doc.text(`Equipos ingresados: ${total}   |   Reparados: ${reparadas}   |   Cancelados: ${canceladas}   |   Ingresos: ${pesosARS(ingresos)}`, 14, y);
   y+=8;
 
-  // fallas
   doc.setFontSize(11); doc.setFont('helvetica','bold'); doc.setTextColor(50);
   doc.text('Resumen por tipo de falla', 14, y); y+=5;
   doc.autoTable({
@@ -1368,7 +1454,6 @@ function pdfInformeParams(mes,anio){
   });
   y=doc.lastAutoTable.finalY+10;
 
-  // detalle
   if(lista.length){
     doc.setFontSize(11); doc.setFont('helvetica','bold');
     doc.text('Detalle de órdenes del mes', 14, y); y+=5;
