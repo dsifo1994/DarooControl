@@ -257,6 +257,20 @@ select option{background:var(--bg3);color:var(--text);}
 .licencia-warn{background:rgba(245,166,35,0.1);color:var(--yellow);border-color:rgba(245,166,35,0.3);}
 .licencia-vencida{background:rgba(255,95,109,0.1);color:var(--red);border-color:rgba(255,95,109,0.3);}
 
+/* SIDEBAR LICENCIA */
+.sb-licencia{background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);padding:.75rem;margin-top:.75rem;}
+.sb-lic-title{font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--muted);margin-bottom:.5rem;display:flex;align-items:center;gap:5px;}
+.sb-lic-fecha{font-size:12px;font-weight:600;color:var(--text);margin-bottom:.4rem;}
+.sb-lic-bar-wrap{height:5px;background:var(--bg4);border-radius:3px;overflow:hidden;margin-bottom:.35rem;}
+.sb-lic-bar{height:100%;border-radius:3px;transition:width .4s ease;}
+.sb-lic-dias{font-size:11px;color:var(--muted);}
+.sb-lic-ok .sb-lic-bar{background:linear-gradient(90deg,var(--green),#00e5a0);}
+.sb-lic-ok .sb-lic-dias{color:var(--green);}
+.sb-lic-warn .sb-lic-bar{background:linear-gradient(90deg,var(--yellow),#ffd166);}
+.sb-lic-warn .sb-lic-dias{color:var(--yellow);}
+.sb-lic-danger .sb-lic-bar{background:linear-gradient(90deg,var(--red),#ff8a8a);}
+.sb-lic-danger .sb-lic-dias{color:var(--red);}
+
 /* scrollbar */
 ::-webkit-scrollbar{width:5px;height:5px;}
 ::-webkit-scrollbar-track{background:transparent;}
@@ -335,6 +349,7 @@ select option{background:var(--bg3);color:var(--text);}
         <div class="tech-role">DarooCell</div>
       </div>
     </div>
+    <div id="sidebar-licencia" style="padding:.75rem 1.5rem 0"></div>
   </div>
 </aside>
 
@@ -660,10 +675,11 @@ async function checkLicencia(){
     }
 
     const bar = document.getElementById('licencia-bar');
-    if(!bar) return;
+    const sbLic = document.getElementById('sidebar-licencia');
 
     if(!tenant.vence_en){
-      bar.innerHTML = '<div class="licencia-bar licencia-ok">✅ Licencia activa · Sin fecha de vencimiento configurada</div>';
+      if(bar) bar.innerHTML = '<div class="licencia-bar licencia-ok">✅ Licencia activa · Sin fecha de vencimiento configurada</div>';
+      if(sbLic) sbLic.innerHTML = '<div class="sb-licencia sb-lic-ok"><div class="sb-lic-title">📅 Licencia</div><div class="sb-lic-fecha">Sin vencimiento</div></div>';
       return;
     }
 
@@ -671,6 +687,11 @@ async function checkLicencia(){
     hoyDate.setHours(0,0,0,0);
     const venceDate = new Date(tenant.vence_en + 'T00:00:00');
     const diasRestantes = Math.ceil((venceDate - hoyDate) / (1000 * 60 * 60 * 24));
+    const opciones = {day:'2-digit',month:'2-digit',year:'numeric'};
+    const fechaStr = venceDate.toLocaleDateString('es-AR', opciones);
+
+    // Calcular porcentaje de barra (sobre 30 días)
+    const pct = Math.min(Math.max(Math.round(diasRestantes / 30 * 100), 0), 100);
 
     if(diasRestantes < 0){
       doLogout();
@@ -678,13 +699,14 @@ async function checkLicencia(){
       document.getElementById('login-error').style.display = 'block';
       return;
     } else if(diasRestantes <= 5){
-      bar.innerHTML = `<div class="licencia-bar licencia-vencida">⚠️ Tu licencia vence en <strong>${diasRestantes} día${diasRestantes!==1?'s':''}</strong> · Contactá a DarooCell para renovar</div>`;
+      if(bar) bar.innerHTML = `<div class="licencia-bar licencia-vencida">⚠️ Tu licencia vence en <strong>${diasRestantes} día${diasRestantes!==1?'s':''}</strong> · Contactá a DarooCell para renovar</div>`;
+      if(sbLic) sbLic.innerHTML = `<div class="sb-licencia sb-lic-danger"><div class="sb-lic-title">⚠️ Licencia</div><div class="sb-lic-fecha">Vence: ${fechaStr}</div><div class="sb-lic-bar-wrap"><div class="sb-lic-bar" style="width:${pct}%"></div></div><div class="sb-lic-dias">${diasRestantes} día${diasRestantes!==1?'s':''} restante${diasRestantes!==1?'s':''} · Renovar ya</div></div>`;
     } else if(diasRestantes <= 15){
-      bar.innerHTML = `<div class="licencia-bar licencia-warn">🔔 Tu licencia vence en <strong>${diasRestantes} días</strong> · Renovar pronto</div>`;
+      if(bar) bar.innerHTML = `<div class="licencia-bar licencia-warn">🔔 Tu licencia vence en <strong>${diasRestantes} días</strong> · Renovar pronto</div>`;
+      if(sbLic) sbLic.innerHTML = `<div class="sb-licencia sb-lic-warn"><div class="sb-lic-title">🔔 Licencia</div><div class="sb-lic-fecha">Vence: ${fechaStr}</div><div class="sb-lic-bar-wrap"><div class="sb-lic-bar" style="width:${pct}%"></div></div><div class="sb-lic-dias">${diasRestantes} días restantes</div></div>`;
     } else {
-      const opciones = {day:'2-digit',month:'2-digit',year:'numeric'};
-      const fechaStr = venceDate.toLocaleDateString('es-AR', opciones);
-      bar.innerHTML = `<div class="licencia-bar licencia-ok">✅ Licencia activa · Vence el ${fechaStr} (${diasRestantes} días restantes)</div>`;
+      if(bar) bar.innerHTML = `<div class="licencia-bar licencia-ok">✅ Licencia activa · Vence el ${fechaStr} (${diasRestantes} días restantes)</div>`;
+      if(sbLic) sbLic.innerHTML = `<div class="sb-licencia sb-lic-ok"><div class="sb-lic-title">📅 Licencia</div><div class="sb-lic-fecha">Vence: ${fechaStr}</div><div class="sb-lic-bar-wrap"><div class="sb-lic-bar" style="width:${pct}%"></div></div><div class="sb-lic-dias">${diasRestantes} días restantes</div></div>`;
     }
   } catch(e){
     console.error('Error verificando licencia:', e);
