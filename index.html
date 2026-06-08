@@ -184,6 +184,12 @@ input:focus,select:focus,textarea:focus{border-color:var(--accent);}
 textarea{resize:vertical;min-height:80px;}
 select option{background:var(--bg3);color:var(--text);}
 
+/* ═══════════════════════ GANANCIA PILL ══════════════ */
+.ganancia-pill{display:inline-flex;align-items:center;gap:5px;padding:2px 8px;border-radius:12px;font-size:11px;font-weight:600;font-family:'JetBrains Mono',monospace;}
+.ganancia-pos{background:rgba(34,201,122,0.12);color:var(--green);border:1px solid rgba(34,201,122,0.2);}
+.ganancia-neg{background:rgba(255,95,109,0.12);color:var(--red);border:1px solid rgba(255,95,109,0.2);}
+.costo-hint{font-size:11px;color:var(--muted);margin-top:2px;}
+
 /* ═══════════════════════ DETAIL ══════════════════════ */
 .detail-section{margin-bottom:1.5rem;}
 .detail-section-title{font-size:11px;font-weight:600;color:var(--muted);letter-spacing:1px;text-transform:uppercase;margin-bottom:.75rem;padding-bottom:.5rem;border-bottom:1px solid var(--border);}
@@ -308,7 +314,6 @@ select option{background:var(--bg3);color:var(--text);}
       <input type="password" id="login-pass" placeholder="••••••••" autocomplete="current-password" onkeydown="if(event.key==='Enter')doLogin()">
     </div>
     <button class="btn btn-primary" style="width:100%;justify-content:center;padding:.75rem" onclick="doLogin()">Ingresar al sistema</button>
-
   </div>
 </div>
 
@@ -376,7 +381,13 @@ select option{background:var(--bg3);color:var(--text);}
         <div class="stat-card purple"><div class="stat-label">Equipos ingresados este mes</div><div class="stat-value" id="stat-mes">0</div><div class="stat-sub">Órdenes del mes</div><div class="stat-icon">📅</div></div>
         <div class="stat-card yellow"><div class="stat-label">En proceso</div><div class="stat-value" id="stat-proceso">0</div><div class="stat-sub">Revisión + Reparando</div><div class="stat-icon">⚙️</div></div>
         <div class="stat-card green"><div class="stat-label">Listas para entregar</div><div class="stat-value" id="stat-listas">0</div><div class="stat-sub">Reparación completa</div><div class="stat-icon">✅</div></div>
-        <div class="stat-card red"><div class="stat-label">Ingresos del mes</div><div class="stat-value" id="stat-ingresos">$0</div><div class="stat-sub">Presupuestos del mes</div><div class="stat-icon">💵</div></div>
+        <!-- MODIFICADO: ganancia neta en lugar de precio total -->
+        <div class="stat-card red">
+          <div class="stat-label">Ganancia neta del mes</div>
+          <div class="stat-value" id="stat-ingresos">$0</div>
+          <div class="stat-sub" id="stat-ingresos-sub">Facturado: $0 · Costos: $0</div>
+          <div class="stat-icon">💵</div>
+        </div>
       </div>
       <div class="quick-row">
         <div class="recent-card">
@@ -411,9 +422,9 @@ select option{background:var(--bg3);color:var(--text);}
         </div>
         <table>
           <thead><tr>
-            <th>ID</th><th>Cliente</th><th>Dispositivo</th><th>Falla</th><th>Estado</th><th>Presupuesto</th><th>Fecha</th><th>Acciones</th>
+            <th>ID</th><th>Cliente</th><th>Dispositivo</th><th>Falla</th><th>Estado</th><th>Precio</th><th>Costo</th><th>Ganancia</th><th>Fecha</th><th>Acciones</th>
           </tr></thead>
-          <tbody id="tbody-ordenes"><tr class="no-results"><td colspan="8">No hay órdenes registradas</td></tr></tbody>
+          <tbody id="tbody-ordenes"><tr class="no-results"><td colspan="10">No hay órdenes registradas</td></tr></tbody>
         </table>
       </div>
     </div>
@@ -498,7 +509,12 @@ select option{background:var(--bg3);color:var(--text);}
             <option value="Reparando">Reparando</option>
           </select>
         </div>
-        <div class="form-group"><label>Presupuesto ($ARS)</label><input type="number" id="f-precio" placeholder="0" min="0" step="1"></div>
+        <div class="form-group"><label>Presupuesto al cliente ($ARS)</label><input type="number" id="f-precio" placeholder="0" min="0" step="1"></div>
+        <!-- NUEVO CAMPO: costo del repuesto -->
+        <div class="form-group span2">
+          <label>Costo del repuesto ($ARS) <span style="color:var(--muted);font-weight:400;letter-spacing:0;text-transform:none">— solo uso interno</span></label>
+          <input type="number" id="f-costo" placeholder="0" min="0" step="1">
+        </div>
         <div class="form-group span2"><label>Observaciones del técnico</label><textarea id="f-obs" placeholder="Notas internas..."></textarea></div>
       </div>
     </div>
@@ -533,7 +549,12 @@ select option{background:var(--bg3);color:var(--text);}
           <option value="Cancelado">❌ Cancelado</option>
         </select>
       </div>
-      <div class="form-group" style="margin-bottom:1rem"><label>Presupuesto ($ARS)</label><input type="number" id="edit-precio" placeholder="0" min="0" step="1"></div>
+      <div class="form-group" style="margin-bottom:1rem"><label>Presupuesto al cliente ($ARS)</label><input type="number" id="edit-precio" placeholder="0" min="0" step="1"></div>
+      <!-- NUEVO CAMPO en editar: costo -->
+      <div class="form-group" style="margin-bottom:1rem">
+        <label>Costo del repuesto ($ARS) <span style="color:var(--muted);font-weight:400;letter-spacing:0;text-transform:none">— solo interno</span></label>
+        <input type="number" id="edit-costo" placeholder="0" min="0" step="1">
+      </div>
       <div class="form-group"><label>Nota del técnico</label><textarea id="edit-nota" placeholder="Detalle de la actualización..."></textarea></div>
     </div>
     <div class="modal-foot">
@@ -566,16 +587,11 @@ select option{background:var(--bg3);color:var(--text);}
 <script>
 // ═══════════════════════════════════════════════════════════
 //  CONFIGURACIÓN SUPABASE
-//  REEMPLAZÁ estos valores con los tuyos de supabase.com
 // ═══════════════════════════════════════════════════════════
 const SUPABASE_URL = 'https://okzvxjlxidmydmxueihf.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9renZ4amx4aWRteWRteHVlaWhmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODAwODg0MzUsImV4cCI6MjA5NTY2NDQzNX0.sevF9AukKhXtN9NGV9tsahmlW2fwygbeCMLxiXFSB14';
-
-// ID de tu tenant (el que creaste en el SQL, o el de tu negocio)
-// Cada cliente que alquilas el sistema tiene un TENANT_ID diferente
 const TENANT_ID = 'aaaaaaaa-0000-0000-0000-000000000001';
 
-// ── Helper para llamar a Supabase REST API ─────────────────
 async function sb(method, table, body=null, params=''){
   const url = `${SUPABASE_URL}/rest/v1/${table}${params}`;
   const headers = {
@@ -602,9 +618,8 @@ let editandoId = null;
 let editandoClienteId = null;
 let filtroActual = 'Todos';
 
-// ── STORAGE: Supabase como backend ───────────────────────────
+// ── STORAGE ──────────────────────────────────────────────
 async function saveOrden(orden){
-  // Nuevo → INSERT, existente → UPDATE
   const payload = {
     tenant_id:    TENANT_ID,
     orden_id:     orden.id,
@@ -617,6 +632,7 @@ async function saveOrden(orden){
     falla:        orden.falla,
     estado:       orden.estado,
     precio:       orden.precio||0,
+    costo:        orden.costo||0,        // NUEVO
     obs:          orden.obs||null,
     fecha:        orden.fecha,
     historia:     orden.historia,
@@ -629,6 +645,7 @@ async function updateOrden(orden){
   const payload = {
     estado:       orden.estado,
     precio:       orden.precio||0,
+    costo:        orden.costo||0,        // NUEVO
     obs:          orden.obs||null,
     historia:     orden.historia,
     actualizado_en: new Date().toISOString()
@@ -649,7 +666,6 @@ async function saveCliente(c){
     dni:        c.dni||null,
     fecha_alta: c.fechaAlta||hoy()
   };
-  // upsert por telefono+tenant
   await sb('POST', 'clientes', payload, '?on_conflict=tenant_id,telefono');
 }
 
@@ -665,31 +681,23 @@ async function checkLicencia(){
     const data = await sb('GET', 'tenants', null, `?id=eq.${TENANT_ID}`);
     if(!data || !data.length) return;
     const tenant = data[0];
-
     if(tenant.activo === false){
       doLogout();
       document.getElementById('login-error').textContent = 'Cuenta suspendida. Contactá a DarooCell.';
       document.getElementById('login-error').style.display = 'block';
       return;
     }
-
     const sbLic = document.getElementById('sidebar-licencia');
-
     if(!tenant.vence_en){
       if(sbLic) sbLic.innerHTML = '<div class="sb-licencia sb-lic-ok"><div class="sb-lic-title">📅 Licencia</div><div class="sb-lic-fecha">Sin vencimiento</div></div>';
       return;
     }
-
-    const hoyDate = new Date();
-    hoyDate.setHours(0,0,0,0);
+    const hoyDate = new Date(); hoyDate.setHours(0,0,0,0);
     const venceDate = new Date(tenant.vence_en + 'T00:00:00');
     const diasRestantes = Math.ceil((venceDate - hoyDate) / (1000 * 60 * 60 * 24));
     const opciones = {day:'2-digit',month:'2-digit',year:'numeric'};
     const fechaStr = venceDate.toLocaleDateString('es-AR', opciones);
-
-    // Calcular porcentaje de barra (sobre 30 días)
     const pct = Math.min(Math.max(Math.round(diasRestantes / 30 * 100), 0), 100);
-
     if(diasRestantes < 0){
       doLogout();
       document.getElementById('login-error').textContent = 'Tu licencia venció. Contactá a DarooCell para renovar.';
@@ -702,9 +710,7 @@ async function checkLicencia(){
     } else {
       if(sbLic) sbLic.innerHTML = `<div class="sb-licencia sb-lic-ok"><div class="sb-lic-title">📅 Licencia</div><div class="sb-lic-fecha">Vence: ${fechaStr}</div><div class="sb-lic-bar-wrap"><div class="sb-lic-bar" style="width:${pct}%"></div></div><div class="sb-lic-dias">${diasRestantes} días restantes</div></div>`;
     }
-  } catch(e){
-    console.error('Error verificando licencia:', e);
-  }
+  } catch(e){ console.error('Error verificando licencia:', e); }
 }
 
 async function loadData(){
@@ -713,7 +719,6 @@ async function loadData(){
       sb('GET', 'ordenes', null, `?tenant_id=eq.${TENANT_ID}&order=creado_en.desc`),
       sb('GET', 'clientes', null, `?tenant_id=eq.${TENANT_ID}&order=nombre.asc`)
     ]);
-    // Mapear de formato Supabase al formato interno de la app
     ordenes = ords.map(o => ({
       id:          o.orden_id,
       nombre:      o.nombre,
@@ -725,6 +730,7 @@ async function loadData(){
       falla:       o.falla,
       estado:      o.estado,
       precio:      o.precio||0,
+      costo:       o.costo||0,     // NUEVO
       obs:         o.obs||'',
       fecha:       o.fecha,
       historia:    o.historia||[]
@@ -744,28 +750,20 @@ async function loadData(){
 }
 
 async function genId(){
-  // Calcular el siguiente número basado en órdenes locales
   const nums = ordenes.map(o => parseInt(o.id.split('-')[1]||0)).filter(n=>!isNaN(n));
   const next = nums.length ? Math.max(...nums) + 1 : 1;
   return 'DC-' + next.toString().padStart(4,'0');
 }
 
-function hoy(){
-  return new Date().toLocaleDateString('es-AR',{day:'2-digit',month:'2-digit',year:'numeric'});
-}
-function horaFull(){
-  return new Date().toLocaleString('es-AR',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'});
-}
-function mesAnio(dateStr){
-  const p = dateStr.split('/');
-  return { mes: parseInt(p[1])-1, anio: parseInt(p[2]) };
-}
-function pesosARS(n){
-  return '$ ' + Math.round(n).toLocaleString('es-AR');
-}
+function hoy(){ return new Date().toLocaleDateString('es-AR',{day:'2-digit',month:'2-digit',year:'numeric'}); }
+function horaFull(){ return new Date().toLocaleString('es-AR',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}); }
+function mesAnio(dateStr){ const p=dateStr.split('/'); return { mes:parseInt(p[1])-1, anio:parseInt(p[2]) }; }
+function pesosARS(n){ return '$ ' + Math.round(n).toLocaleString('es-AR'); }
+// NUEVO: ganancia = precio - costo
+function ganancia(o){ return (o.precio||0) - (o.costo||0); }
 
 // ═══════════════════════════════════════════════════════════
-//  LOGIN (credenciales simples — sin Supabase Auth por ahora)
+//  LOGIN
 // ═══════════════════════════════════════════════════════════
 const USERS = { admin:{ pass:'Thiago2025', name:'Administrador' } };
 
@@ -793,9 +791,7 @@ function doLogin(){
       loginBtn.disabled = false;
       showToast('Error al conectar con Supabase', true);
     });
-  } else {
-    err.style.display='block';
-  }
+  } else { err.style.display='block'; }
 }
 
 function doLogout(){
@@ -812,7 +808,6 @@ function doLogout(){
 // ═══════════════════════════════════════════════════════════
 let currentTheme = localStorage.getItem('dc_theme') || 'dark';
 document.documentElement.setAttribute('data-theme', currentTheme);
-
 function toggleTheme(){
   currentTheme = currentTheme === 'dark' ? 'light' : 'dark';
   document.documentElement.setAttribute('data-theme', currentTheme);
@@ -825,18 +820,17 @@ document.getElementById('theme-btn').textContent = currentTheme === 'dark' ? '�
 //  NAVEGACIÓN
 // ═══════════════════════════════════════════════════════════
 const pTitles = {dashboard:'Dashboard',ordenes:'Órdenes',presupuestos:'Presupuestos',clientes:'Clientes',informe:'Informe mensual'};
-
 function showPage(name, el){
   document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
   document.getElementById('page-'+name).classList.add('active');
   document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));
   if(el) el.classList.add('active');
   document.getElementById('topbar-title').textContent = pTitles[name];
-  if(name==='ordenes')    renderOrdenes();
-  if(name==='clientes')   renderClientes();
+  if(name==='ordenes')      renderOrdenes();
+  if(name==='clientes')     renderClientes();
   if(name==='presupuestos') renderPresupuestos();
-  if(name==='dashboard')  renderDashboard();
-  if(name==='informe')    renderInforme();
+  if(name==='dashboard')    renderDashboard();
+  if(name==='informe')      renderInforme();
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -873,6 +867,7 @@ async function guardarOrden(){
     showToast('Completá los campos obligatorios *',true); return;
   }
   const precio = parseInt(document.getElementById('f-precio').value)||0;
+  const costo  = parseInt(document.getElementById('f-costo').value)||0;  // NUEVO
   const estado = document.getElementById('f-estado').value;
   const orden = {
     id: await genId(),
@@ -881,22 +876,17 @@ async function guardarOrden(){
     dni:   document.getElementById('f-dni').value.trim(),
     dispositivo,
     imei:  document.getElementById('f-imei').value.trim(),
-    falla, estado, precio,
+    falla, estado, precio, costo,   // NUEVO: costo
     obs:   document.getElementById('f-obs').value.trim(),
     fecha: hoy(),
     historia:[{estado, nota:'Orden creada', fecha:horaFull()}]
   };
-
   try {
     await saveOrden(orden);
     ordenes.unshift(orden);
-    // auto-agregar cliente si no existe
     const existe = clientesInd.find(c=>c.telefono===telefono);
     if(!existe){
-      const nuevoCliente = {
-        id:'CLI-'+Date.now(), nombre, telefono,
-        email: orden.email, dni: orden.dni, fechaAlta: hoy()
-      };
+      const nuevoCliente = { id:'CLI-'+Date.now(), nombre, telefono, email:orden.email, dni:orden.dni, fechaAlta:hoy() };
       await saveCliente(nuevoCliente);
       clientesInd.push(nuevoCliente);
     }
@@ -911,7 +901,7 @@ async function guardarOrden(){
 }
 
 function limpiarFormOrden(){
-  ['f-nombre','f-telefono','f-email','f-dni','f-dispositivo','f-imei','f-precio','f-obs'].forEach(id=>{
+  ['f-nombre','f-telefono','f-email','f-dni','f-dispositivo','f-imei','f-precio','f-costo','f-obs'].forEach(id=>{
     document.getElementById(id).value='';
   });
   document.getElementById('f-falla').value='';
@@ -943,7 +933,7 @@ const statusCls = {
 function statusBadge(e){ return `<span class="status-badge ${statusCls[e]||''}">${e}</span>`; }
 
 // ═══════════════════════════════════════════════════════════
-//  RENDER ÓRDENES
+//  RENDER ÓRDENES — MODIFICADO: columnas Costo y Ganancia
 // ═══════════════════════════════════════════════════════════
 function filterOrdenes(f, el){
   filtroActual=f;
@@ -960,15 +950,21 @@ function renderOrdenes(){
     return mf&&ms;
   });
   const tb=document.getElementById('tbody-ordenes');
-  if(!lista.length){ tb.innerHTML='<tr class="no-results"><td colspan="8">No se encontraron órdenes</td></tr>'; return; }
-  tb.innerHTML = lista.map(o=>`
-    <tr onclick="verDetalle('${o.id}')">
+  if(!lista.length){ tb.innerHTML='<tr class="no-results"><td colspan="10">No se encontraron órdenes</td></tr>'; return; }
+  tb.innerHTML = lista.map(o=>{
+    const gan = ganancia(o);
+    const ganHtml = o.precio
+      ? `<span class="ganancia-pill ${gan>=0?'ganancia-pos':'ganancia-neg'}">${gan>=0?'+':''}${pesosARS(gan)}</span>`
+      : '—';
+    return `<tr onclick="verDetalle('${o.id}')">
       <td><span class="order-id">${o.id}</span></td>
       <td><div class="client-cell">${o.nombre}</div><div class="client-phone">${o.telefono}</div></td>
       <td>${o.dispositivo}</td>
       <td>${o.falla}</td>
       <td>${statusBadge(o.estado)}</td>
       <td class="price-cell">${o.precio?pesosARS(o.precio):'—'}</td>
+      <td class="price-cell" style="color:var(--red)">${o.costo?pesosARS(o.costo):'—'}</td>
+      <td>${ganHtml}</td>
       <td style="color:var(--muted)">${o.fecha}</td>
       <td onclick="event.stopPropagation()">
         <div class="action-btns">
@@ -977,11 +973,12 @@ function renderOrdenes(){
           <button class="icon-btn danger" onclick="eliminarOrden('${o.id}')" title="Eliminar">🗑️</button>
         </div>
       </td>
-    </tr>`).join('');
+    </tr>`;
+  }).join('');
 }
 
 // ═══════════════════════════════════════════════════════════
-//  DETALLE ORDEN
+//  DETALLE ORDEN — MODIFICADO: muestra costo y ganancia
 // ═══════════════════════════════════════════════════════════
 function verDetalle(id){
   const o=ordenes.find(x=>x.id===id); if(!o) return;
@@ -1002,6 +999,20 @@ function verDetalle(id){
         ${h?`<div class="tl-date">${h.fecha}${h.nota?' — '+h.nota:''}</div>`:''}
       </div></div>`;
   }).join('');
+
+  const gan = ganancia(o);
+  const ganHtml = (o.precio||o.costo) ? `
+    <div class="detail-row">
+      <span class="lbl">Costo del repuesto</span>
+      <span class="val" style="color:var(--red);font-family:monospace">${o.costo?pesosARS(o.costo):'Sin costo cargado'}</span>
+    </div>
+    <div class="detail-row">
+      <span class="lbl">Ganancia neta</span>
+      <span class="val">
+        <span class="ganancia-pill ${gan>=0?'ganancia-pos':'ganancia-neg'}" style="font-size:13px;padding:4px 10px">${gan>=0?'+':''}${pesosARS(gan)}</span>
+      </span>
+    </div>` : '';
+
   document.getElementById('detail-body').innerHTML=`
     <div class="detail-section">
       <div class="detail-section-title">Cliente</div>
@@ -1015,8 +1026,12 @@ function verDetalle(id){
       <div class="detail-row"><span class="lbl">Modelo</span><span class="val">${o.dispositivo}</span></div>
       ${o.imei?`<div class="detail-row"><span class="lbl">IMEI</span><span class="val" style="font-family:monospace">${o.imei}</span></div>`:''}
       <div class="detail-row"><span class="lbl">Falla</span><span class="val">${o.falla}</span></div>
-      <div class="detail-row"><span class="lbl">Presupuesto</span><span class="val" style="color:var(--green);font-family:monospace">${o.precio?pesosARS(o.precio):'Sin cotizar'}</span></div>
       <div class="detail-row"><span class="lbl">Estado</span><span class="val">${statusBadge(o.estado)}</span></div>
+    </div>
+    <div class="detail-section">
+      <div class="detail-section-title">💰 Financiero</div>
+      <div class="detail-row"><span class="lbl">Presupuesto al cliente</span><span class="val" style="color:var(--green);font-family:monospace">${o.precio?pesosARS(o.precio):'Sin cotizar'}</span></div>
+      ${ganHtml}
     </div>
     ${o.obs?`<div class="detail-section"><div class="detail-section-title">Observaciones</div><p style="font-size:13px;color:var(--muted);line-height:1.6">${o.obs}</p></div>`:''}
     <div class="detail-section"><div class="detail-section-title">Seguimiento</div><div class="timeline">${tl}</div></div>`;
@@ -1028,12 +1043,13 @@ function verDetalle(id){
 }
 
 // ═══════════════════════════════════════════════════════════
-//  EDITAR
+//  EDITAR — MODIFICADO: incluye costo
 // ═══════════════════════════════════════════════════════════
 function abrirEditar(id){
   editandoId=id;
   const o=ordenes.find(x=>x.id===id); if(!o) return;
   document.getElementById('edit-precio').value=o.precio||'';
+  document.getElementById('edit-costo').value=o.costo||'';   // NUEVO
   document.getElementById('edit-nota').value='';
   const sel=document.getElementById('edit-estado');
   Array.from(sel.options).forEach(opt=>{ opt.selected = opt.value===o.estado; });
@@ -1043,8 +1059,9 @@ async function guardarEdicion(){
   const o=ordenes.find(x=>x.id===editandoId); if(!o) return;
   const ns=document.getElementById('edit-estado').value;
   const np=parseInt(document.getElementById('edit-precio').value)||o.precio;
+  const nc=parseInt(document.getElementById('edit-costo').value)||o.costo||0;  // NUEVO
   const nota=document.getElementById('edit-nota').value.trim()||'Estado actualizado';
-  o.estado=ns; o.precio=np;
+  o.estado=ns; o.precio=np; o.costo=nc;   // NUEVO
   o.historia.push({estado:ns,nota,fecha:horaFull()});
   try {
     await updateOrden(o);
@@ -1068,9 +1085,7 @@ async function eliminarOrden(id){
     ordenes=ordenes.filter(o=>o.id!==id);
     renderOrdenes(); renderDashboard(); renderClientes(); renderPresupuestos();
     updateBadge(); showToast('Orden eliminada');
-  } catch(e) {
-    showToast('Error al eliminar', true);
-  }
+  } catch(e) { showToast('Error al eliminar', true); }
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -1082,7 +1097,7 @@ function updateBadge(){
 }
 
 // ═══════════════════════════════════════════════════════════
-//  DASHBOARD
+//  DASHBOARD — MODIFICADO: ganancia neta con desglose
 // ═══════════════════════════════════════════════════════════
 function renderDashboard(){
   const ahora=new Date();
@@ -1096,12 +1111,19 @@ function renderDashboard(){
   });
   const proceso=ordenes.filter(o=>['En revisión','Reparando'].includes(o.estado)).length;
   const listas=ordenes.filter(o=>o.estado==='Listo').length;
-  const ingresosMes=ordensMes.filter(o=>o.estado!=='Cancelado').reduce((s,o)=>s+(o.precio||0),0);
+
+  // MODIFICADO: calcular facturado, costos y ganancia neta del mes
+  const ordensMesValidas = ordensMes.filter(o=>o.estado!=='Cancelado');
+  const facturadoMes = ordensMesValidas.reduce((s,o)=>s+(o.precio||0),0);
+  const costosMes    = ordensMesValidas.reduce((s,o)=>s+(o.costo||0),0);
+  const gananciaMes  = facturadoMes - costosMes;
 
   document.getElementById('stat-mes').textContent=ordensMes.length;
   document.getElementById('stat-proceso').textContent=proceso;
   document.getElementById('stat-listas').textContent=listas;
-  document.getElementById('stat-ingresos').textContent=pesosARS(ingresosMes);
+  document.getElementById('stat-ingresos').textContent=pesosARS(gananciaMes);
+  document.getElementById('stat-ingresos-sub').textContent=
+    'Facturado: '+pesosARS(facturadoMes)+' · Costos: '+pesosARS(costosMes);
 
   const iconMes     = document.querySelector('.stat-card.purple .stat-icon');
   const iconProceso = document.querySelector('.stat-card.yellow .stat-icon');
@@ -1110,7 +1132,7 @@ function renderDashboard(){
   if(iconMes){     iconMes.style.opacity = '0.08'; iconMes.style.filter = 'none'; }
   if(iconProceso){ iconProceso.style.opacity = proceso > 0 ? '0.85' : '0.08'; iconProceso.style.filter = proceso > 0 ? 'drop-shadow(0 0 8px var(--yellow))' : 'none'; }
   if(iconListas){  iconListas.style.opacity  = listas  > 0 ? '0.95' : '0.08'; iconListas.style.filter  = listas  > 0 ? 'drop-shadow(0 0 10px var(--green))'  : 'none'; }
-  if(iconIngres){  iconIngres.style.opacity  = ingresosMes > 0 ? '0.90' : '0.08'; iconIngres.style.filter  = ingresosMes > 0 ? 'drop-shadow(0 0 8px var(--green))'  : 'none'; }
+  if(iconIngres){  iconIngres.style.opacity  = gananciaMes > 0 ? '0.90' : '0.08'; iconIngres.style.filter  = gananciaMes > 0 ? 'drop-shadow(0 0 8px var(--green))'  : 'none'; }
 
   const recEl=document.getElementById('recent-list');
   const rec=ordenes.slice(0,5);
@@ -1132,13 +1154,12 @@ function renderDashboard(){
 }
 
 // ═══════════════════════════════════════════════════════════
-//  CLIENTES INDEPENDIENTES
+//  CLIENTES
 // ═══════════════════════════════════════════════════════════
 async function guardarCliente(){
   const nombre=document.getElementById('nc-nombre').value.trim();
   const telefono=document.getElementById('nc-telefono').value.trim();
   if(!nombre||!telefono){ showToast('Nombre y teléfono son obligatorios',true); return; }
-
   const clienteData = {
     id: editandoClienteId||('CLI-'+Date.now()),
     nombre, telefono,
@@ -1146,7 +1167,6 @@ async function guardarCliente(){
     dni:document.getElementById('nc-dni').value.trim(),
     fechaAlta: hoy()
   };
-
   try {
     await saveCliente(clienteData);
     if(editandoClienteId){
@@ -1163,10 +1183,7 @@ async function guardarCliente(){
     limpiarFormCliente();
     renderClientes(); actualizarAutocomplete();
     showToast('Cliente guardado ✓');
-  } catch(e) {
-    showToast('Error al guardar cliente', true);
-    console.error(e);
-  }
+  } catch(e) { showToast('Error al guardar cliente', true); console.error(e); }
 }
 
 function limpiarFormCliente(){
@@ -1191,9 +1208,7 @@ async function eliminarCliente(id){
     await deleteCliente(c.telefono);
     clientesInd=clientesInd.filter(x=>x.id!==id);
     renderClientes(); showToast('Cliente eliminado');
-  } catch(e) {
-    showToast('Error al eliminar cliente', true);
-  }
+  } catch(e) { showToast('Error al eliminar cliente', true); }
 }
 
 function renderClientes(){
@@ -1204,8 +1219,7 @@ function renderClientes(){
     mapOrd[o.telefono].count++;
     mapOrd[o.telefono].total+=(o.precio||0);
   });
-  const todos=[];
-  const telosVisto=new Set();
+  const todos=[]; const telosVisto=new Set();
   clientesInd.forEach(c=>{ telosVisto.add(c.telefono); todos.push({...c, fromInd:true}); });
   ordenes.forEach(o=>{
     if(!telosVisto.has(o.telefono)){
@@ -1213,7 +1227,6 @@ function renderClientes(){
       todos.push({id:null,nombre:o.nombre,telefono:o.telefono,email:o.email||'',dni:o.dni||'',fechaAlta:o.fecha,fromInd:false});
     }
   });
-
   const lista=todos.filter(c=>!q||c.nombre.toLowerCase().includes(q)||c.telefono.includes(q));
   const tb=document.getElementById('tbody-clientes');
   if(!lista.length){ tb.innerHTML='<tr class="no-results"><td colspan="7">No hay clientes registrados</td></tr>'; return; }
@@ -1238,7 +1251,7 @@ function renderClientes(){
 }
 
 // ═══════════════════════════════════════════════════════════
-//  PRESUPUESTOS
+//  PRESUPUESTOS — MODIFICADO: muestra costo y ganancia
 // ═══════════════════════════════════════════════════════════
 function renderPresupuestos(){
   const lista=ordenes.filter(o=>o.precio>0&&o.estado!=='Cancelado');
@@ -1247,8 +1260,9 @@ function renderPresupuestos(){
     el.innerHTML=`<div class="empty-state"><div class="empty-icon">💰</div><div class="empty-title">Sin presupuestos</div><div class="empty-sub">Los presupuestos aparecen cuando una orden tiene monto asignado</div></div>`;
     return;
   }
-  el.innerHTML=lista.map(o=>`
-    <div class="budget-card">
+  el.innerHTML=lista.map(o=>{
+    const gan = ganancia(o);
+    return `<div class="budget-card">
       <div onclick="verDetalle('${o.id}')">
         <div class="budget-header"><span class="budget-id">${o.id}</span>${statusBadge(o.estado)}</div>
         <div class="budget-client">${o.nombre}</div>
@@ -1257,15 +1271,18 @@ function renderPresupuestos(){
       </div>
       <div class="budget-price-col">
         <div class="budget-price">${pesosARS(o.precio)}</div>
+        ${o.costo?`<div class="costo-hint">Costo repuesto: ${pesosARS(o.costo)}</div>
+        <div style="margin-top:4px"><span class="ganancia-pill ${gan>=0?'ganancia-pos':'ganancia-neg'}">${gan>=0?'Ganancia':'Pérdida'}: ${pesosARS(Math.abs(gan))}</span></div>`:''}
         <div class="budget-date">${o.fecha}</div>
         ${o.estado==='Listo'?'<div style="color:var(--green);font-size:11px;margin-top:4px;font-weight:600">✅ Listo para cobrar</div>':''}
         <button class="btn btn-pdf" style="margin-top:.5rem;padding:.3rem .6rem;font-size:11px" onclick="pdfOrdenIndividual('${o.id}')">📄 PDF</button>
       </div>
-    </div>`).join('');
+    </div>`;
+  }).join('');
 }
 
 // ═══════════════════════════════════════════════════════════
-//  INFORME MENSUAL
+//  INFORME MENSUAL — MODIFICADO: stat ganancia neta + tabla con costos
 // ═══════════════════════════════════════════════════════════
 const MESES=['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
 const FALLAS=['MODULO','PIN DE CARGA','BATERIA','CUENTA GOOGLE','OTRAS FALLAS'];
@@ -1291,8 +1308,13 @@ function renderInforme(){
   });
   const total=lista.length;
   const reparadas=lista.filter(o=>['Listo','Entregado'].includes(o.estado)).length;
-  const ingresos=lista.filter(o=>o.estado!=='Cancelado').reduce((s,o)=>s+(o.precio||0),0);
   const canceladas=lista.filter(o=>o.estado==='Cancelado').length;
+
+  // MODIFICADO: calcular con costos
+  const listaValidas = lista.filter(o=>o.estado!=='Cancelado');
+  const facturado = listaValidas.reduce((s,o)=>s+(o.precio||0),0);
+  const costos    = listaValidas.reduce((s,o)=>s+(o.costo||0),0);
+  const gananciaNeta = facturado - costos;
 
   const fallaCounts={};
   FALLAS.forEach(f=>fallaCounts[f]=0);
@@ -1306,18 +1328,36 @@ function renderInforme(){
       <div class="falla-count">${fallaCounts[f]}</div>
     </div>`).join('');
 
+  // MODIFICADO: tabla detalle con columnas Costo, Precio y Ganancia
   const tablaMes=lista.length?`
     <div class="table-wrap" style="margin-top:1.5rem">
       <div class="table-header"><span class="table-title">Detalle de órdenes — ${MESES[mes]} ${anio}</span></div>
-      <table><thead><tr><th>ID</th><th>Cliente</th><th>Dispositivo</th><th>Falla</th><th>Estado</th><th>Presupuesto</th></tr></thead>
-      <tbody>${lista.map(o=>`
-        <tr onclick="verDetalle('${o.id}')">
-          <td><span class="order-id">${o.id}</span></td>
-          <td>${o.nombre}</td><td>${o.dispositivo}</td><td>${o.falla}</td>
-          <td>${statusBadge(o.estado)}</td>
-          <td class="price-cell">${o.precio?pesosARS(o.precio):'—'}</td>
-        </tr>`).join('')}
-      </tbody></table>
+      <table>
+        <thead><tr>
+          <th>ID</th><th>Cliente</th><th>Dispositivo</th><th>Falla</th><th>Estado</th>
+          <th>Precio cobrado</th><th>Costo repuesto</th><th>Ganancia neta</th>
+        </tr></thead>
+        <tbody>${lista.map(o=>{
+          const gan=ganancia(o);
+          return `<tr onclick="verDetalle('${o.id}')">
+            <td><span class="order-id">${o.id}</span></td>
+            <td>${o.nombre}</td><td>${o.dispositivo}</td><td>${o.falla}</td>
+            <td>${statusBadge(o.estado)}</td>
+            <td class="price-cell">${o.precio?pesosARS(o.precio):'—'}</td>
+            <td class="price-cell" style="color:var(--red)">${o.costo?pesosARS(o.costo):'—'}</td>
+            <td>${o.precio||o.costo?`<span class="ganancia-pill ${gan>=0?'ganancia-pos':'ganancia-neg'}">${gan>=0?'+':''}${pesosARS(gan)}</span>`:'—'}</td>
+          </tr>`;
+        }).join('')}
+        </tbody>
+        <tfoot>
+          <tr style="background:var(--bg3);font-weight:700">
+            <td colspan="5" style="padding:.85rem 1.5rem;font-size:13px;color:var(--muted)">TOTALES DEL MES</td>
+            <td class="price-cell" style="padding:.85rem 1.5rem;color:var(--text)">${pesosARS(facturado)}</td>
+            <td class="price-cell" style="padding:.85rem 1.5rem;color:var(--red)">${pesosARS(costos)}</td>
+            <td style="padding:.85rem 1.5rem"><span class="ganancia-pill ${gananciaNeta>=0?'ganancia-pos':'ganancia-neg'}" style="font-size:13px;padding:4px 12px">${gananciaNeta>=0?'+':''}${pesosARS(gananciaNeta)}</span></td>
+          </tr>
+        </tfoot>
+      </table>
     </div>` : '';
 
   document.getElementById('informe-body').innerHTML=`
@@ -1325,7 +1365,11 @@ function renderInforme(){
       <div class="stat-card purple"><div class="stat-label">Equipos ingresados</div><div class="stat-value">${total}</div></div>
       <div class="stat-card green"><div class="stat-label">Reparados</div><div class="stat-value">${reparadas}</div></div>
       <div class="stat-card yellow"><div class="stat-label">Cancelados</div><div class="stat-value">${canceladas}</div></div>
-      <div class="stat-card red"><div class="stat-label">Ingresos del mes</div><div class="stat-value" style="font-size:18px">${pesosARS(ingresos)}</div></div>
+      <div class="stat-card red">
+        <div class="stat-label">Ganancia neta</div>
+        <div class="stat-value" style="font-size:18px">${pesosARS(gananciaNeta)}</div>
+        <div class="stat-sub">Facturado ${pesosARS(facturado)} · Costos ${pesosARS(costos)}</div>
+      </div>
     </div>
     <div class="recent-card" style="margin-top:1.5rem">
       <div class="rc-head">📊 Fallas más comunes — ${MESES[mes]} ${anio}</div>
@@ -1335,7 +1379,7 @@ function renderInforme(){
 }
 
 // ═══════════════════════════════════════════════════════════
-//  PDF HELPERS
+//  PDF HELPERS — MODIFICADOS para incluir costos y ganancia
 // ═══════════════════════════════════════════════════════════
 function getJsPDF(){
   const { jsPDF } = window.jspdf;
@@ -1366,8 +1410,10 @@ function pdfFooter(doc){
   }
 }
 
+// PDF orden individual — MODIFICADO: incluye costo y ganancia
 function pdfOrdenIndividual(id){
   const o=ordenes.find(x=>x.id===id); if(!o) return;
+  const gan=ganancia(o);
   const doc=getJsPDF();
   pdfHeader(doc,'Orden de Reparación');
   doc.setFontSize(11); doc.setFont('helvetica','bold');
@@ -1379,7 +1425,9 @@ function pdfOrdenIndividual(id){
     ['Email',o.email||'—'],['DNI',o.dni||'—'],
     ['Dispositivo',o.dispositivo],['IMEI/Serie',o.imei||'—'],
     ['Falla reportada',o.falla],['Estado',o.estado],
-    ['Presupuesto',o.precio?pesosARS(o.precio):'Sin cotizar'],
+    ['Presupuesto al cliente',o.precio?pesosARS(o.precio):'Sin cotizar'],
+    ['Costo del repuesto',o.costo?pesosARS(o.costo):'Sin costo'],
+    ['Ganancia neta',(o.precio||o.costo)?(gan>=0?'+':'')+pesosARS(gan):'—'],
     ['Fecha ingreso',o.fecha],
     ['Observaciones',o.obs||'—']
   ];
@@ -1390,13 +1438,20 @@ function pdfOrdenIndividual(id){
     styles:{fontSize:10,cellPadding:4},
     headStyles:{fillColor:[108,99,255],textColor:[255,255,255]},
     alternateRowStyles:{fillColor:[245,245,252]},
-    columnStyles:{0:{fontStyle:'bold',cellWidth:50}}
+    columnStyles:{0:{fontStyle:'bold',cellWidth:50}},
+    // Resaltar filas financieras
+    didParseCell: (data)=>{
+      if(data.section==='body'){
+        const label=data.row.raw[0];
+        if(label==='Costo del repuesto') data.cell.styles.textColor=[200,60,60];
+        if(label==='Ganancia neta') data.cell.styles.textColor = gan>=0?[34,150,80]:[200,60,60];
+      }
+    }
   });
 
   let y=doc.lastAutoTable.finalY+10;
   doc.setFontSize(11); doc.setFont('helvetica','bold');
-  doc.text('Historial de cambios', 14, y);
-  y+=5;
+  doc.text('Historial de cambios', 14, y); y+=5;
   doc.autoTable({
     startY:y,
     head:[['Estado','Nota','Fecha/Hora']],
@@ -1421,9 +1476,16 @@ function pdfOrdenes(){
   pdfHeader(doc,'Listado de Órdenes');
   doc.autoTable({
     startY:22,
-    head:[['ID','Cliente','Teléfono','Dispositivo','Falla','Estado','Presupuesto','Fecha']],
-    body:lista.map(o=>[o.id,o.nombre,o.telefono,o.dispositivo,o.falla,o.estado,o.precio?pesosARS(o.precio):'—',o.fecha]),
-    styles:{fontSize:8,cellPadding:3},
+    head:[['ID','Cliente','Dispositivo','Falla','Estado','Precio','Costo','Ganancia','Fecha']],
+    body:lista.map(o=>{
+      const gan=ganancia(o);
+      return [o.id,o.nombre,o.dispositivo,o.falla,o.estado,
+        o.precio?pesosARS(o.precio):'—',
+        o.costo?pesosARS(o.costo):'—',
+        (o.precio||o.costo)?(gan>=0?'+':'')+pesosARS(gan):'—',
+        o.fecha];
+    }),
+    styles:{fontSize:7,cellPadding:2},
     headStyles:{fillColor:[108,99,255],textColor:[255,255,255]},
     alternateRowStyles:{fillColor:[245,245,252]}
   });
@@ -1436,17 +1498,25 @@ function pdfPresupuestos(){
   if(!lista.length){ showToast('No hay presupuestos para exportar',true); return; }
   const doc=getJsPDF();
   pdfHeader(doc,'Listado de Presupuestos');
-  const total=lista.reduce((s,o)=>s+(o.precio||0),0);
+  const totalFact=lista.reduce((s,o)=>s+(o.precio||0),0);
+  const totalCosto=lista.reduce((s,o)=>s+(o.costo||0),0);
+  const totalGan=totalFact-totalCosto;
   doc.setFontSize(10); doc.setTextColor(80);
-  doc.text('Total en presupuestos activos: '+pesosARS(total), 14, 24);
+  doc.text(`Facturado: ${pesosARS(totalFact)}   |   Costos: ${pesosARS(totalCosto)}   |   Ganancia neta: ${pesosARS(totalGan)}`, 14, 24);
   doc.autoTable({
     startY:30,
-    head:[['ID','Cliente','Dispositivo','Falla','Estado','Presupuesto ($ARS)','Fecha']],
-    body:lista.map(o=>[o.id,o.nombre,o.dispositivo,o.falla,o.estado,pesosARS(o.precio),o.fecha]),
-    styles:{fontSize:9,cellPadding:3},
+    head:[['ID','Cliente','Dispositivo','Falla','Estado','Precio ($ARS)','Costo ($ARS)','Ganancia']],
+    body:lista.map(o=>{
+      const gan=ganancia(o);
+      return [o.id,o.nombre,o.dispositivo,o.falla,o.estado,
+        pesosARS(o.precio),
+        o.costo?pesosARS(o.costo):'—',
+        (gan>=0?'+':'')+pesosARS(gan)];
+    }),
+    styles:{fontSize:8,cellPadding:3},
     headStyles:{fillColor:[34,201,122],textColor:[255,255,255]},
     alternateRowStyles:{fillColor:[240,252,247]},
-    columnStyles:{5:{halign:'right'}}
+    columnStyles:{5:{halign:'right'},6:{halign:'right'},7:{halign:'right'}}
   });
   pdfFooter(doc);
   doc.save('DarooCell-Presupuestos.pdf');
@@ -1492,6 +1562,7 @@ function pdfInformeCustom(){
   pdfInformeParams(mes,anio);
 }
 
+// PDF Informe — MODIFICADO: tabla con costo, precio y ganancia neta
 function pdfInformeParams(mes,anio){
   const lista=ordenes.filter(o=>{
     const {mes:m,anio:a}=mesAnio(o.fecha);
@@ -1499,8 +1570,11 @@ function pdfInformeParams(mes,anio){
   });
   const total=lista.length;
   const reparadas=lista.filter(o=>['Listo','Entregado'].includes(o.estado)).length;
-  const ingresos=lista.filter(o=>o.estado!=='Cancelado').reduce((s,o)=>s+(o.precio||0),0);
   const canceladas=lista.filter(o=>o.estado==='Cancelado').length;
+  const listaValidas=lista.filter(o=>o.estado!=='Cancelado');
+  const facturado=listaValidas.reduce((s,o)=>s+(o.precio||0),0);
+  const costos=listaValidas.reduce((s,o)=>s+(o.costo||0),0);
+  const gananciaNeta=facturado-costos;
 
   const fallaCounts={};
   FALLAS.forEach(f=>fallaCounts[f]=0);
@@ -1511,8 +1585,8 @@ function pdfInformeParams(mes,anio){
 
   let y=24;
   doc.setFontSize(10); doc.setTextColor(80);
-  doc.text(`Equipos ingresados: ${total}   |   Reparados: ${reparadas}   |   Cancelados: ${canceladas}   |   Ingresos: ${pesosARS(ingresos)}`, 14, y);
-  y+=8;
+  doc.text(`Equipos: ${total}   |   Reparados: ${reparadas}   |   Cancelados: ${canceladas}`, 14, y); y+=6;
+  doc.text(`Facturado: ${pesosARS(facturado)}   |   Costos: ${pesosARS(costos)}   |   Ganancia neta: ${pesosARS(gananciaNeta)}`, 14, y); y+=8;
 
   doc.setFontSize(11); doc.setFont('helvetica','bold'); doc.setTextColor(50);
   doc.text('Resumen por tipo de falla', 14, y); y+=5;
@@ -1531,11 +1605,24 @@ function pdfInformeParams(mes,anio){
     doc.text('Detalle de órdenes del mes', 14, y); y+=5;
     doc.autoTable({
       startY:y,
-      head:[['ID','Cliente','Dispositivo','Falla','Estado','Presupuesto']],
-      body:lista.map(o=>[o.id,o.nombre,o.dispositivo,o.falla,o.estado,o.precio?pesosARS(o.precio):'—']),
-      styles:{fontSize:8,cellPadding:3},
+      head:[['ID','Cliente','Dispositivo','Falla','Estado','Precio cobrado','Costo repuesto','Ganancia']],
+      body:lista.map(o=>{
+        const gan=ganancia(o);
+        return [o.id,o.nombre,o.dispositivo,o.falla,o.estado,
+          o.precio?pesosARS(o.precio):'—',
+          o.costo?pesosARS(o.costo):'—',
+          (o.precio||o.costo)?(gan>=0?'+':'')+pesosARS(gan):'—'];
+      }),
+      styles:{fontSize:7,cellPadding:2},
       headStyles:{fillColor:[34,201,122],textColor:[255,255,255]},
-      alternateRowStyles:{fillColor:[240,252,247]}
+      alternateRowStyles:{fillColor:[240,252,247]},
+      foot:[[
+        '','','','','TOTAL',
+        pesosARS(facturado),
+        pesosARS(costos),
+        (gananciaNeta>=0?'+':'')+pesosARS(gananciaNeta)
+      ]],
+      footStyles:{fillColor:[34,180,100],textColor:[255,255,255],fontStyle:'bold',fontSize:8}
     });
   }
   pdfFooter(doc);
@@ -1550,7 +1637,7 @@ const aColors=['rgba(108,99,255,0.25)','rgba(34,201,122,0.2)','rgba(245,166,35,0
 function avatarColor(n){ let h=0; for(let i=0;i<n.length;i++) h+=n.charCodeAt(i); return aColors[h%aColors.length]; }
 
 // ═══════════════════════════════════════════════════════════
-//  INIT — auto-login si hay sesión guardada
+//  INIT
 // ═══════════════════════════════════════════════════════════
 (function(){
   const u = localStorage.getItem('dc_session');
