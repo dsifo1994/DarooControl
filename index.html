@@ -270,6 +270,42 @@ select.form-input option{background:var(--s2);color:var(--text);}
 .falla-fill{height:100%;background:linear-gradient(90deg,var(--accent),var(--cyan));border-radius:3px;transition:width .5s ease;}
 .falla-num{font-family:'DM Mono',monospace;font-size:11px;color:var(--accent-hover);width:24px;text-align:right;}
 .client-avatar-cell{width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:#fff;flex-shrink:0;}
+/* ── AUTOCOMPLETE PERSONALIZADO ── */
+.ac-wrap{position:relative;width:100%;}
+.ac-dropdown{
+  position:absolute;top:calc(100% + 4px);left:0;right:0;
+  background:var(--surface);border:1px solid var(--border2);
+  border-radius:var(--r);z-index:9999;
+  max-height:220px;overflow-y:auto;
+  box-shadow:0 8px 32px rgba(0,0,0,.4);
+  display:none;
+  scrollbar-width:thin;
+}
+.ac-dropdown.open{display:block;animation:slideDown 120ms ease;}
+.ac-item{
+  display:flex;align-items:center;gap:10px;
+  padding:9px 12px;cursor:pointer;
+  transition:background var(--transition);border-bottom:1px solid var(--border);
+}
+.ac-item:last-child{border-bottom:none;}
+.ac-item:hover,.ac-item.selected{background:var(--s2);}
+.ac-avatar{
+  width:28px;height:28px;border-radius:50%;flex-shrink:0;
+  display:flex;align-items:center;justify-content:center;
+  font-size:11px;font-weight:700;color:#fff;
+}
+.ac-info{flex:1;min-width:0;}
+.ac-name{font-size:13px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.ac-tel{font-size:11px;color:var(--muted);}
+.ac-empty{padding:14px 12px;font-size:13px;color:var(--muted);text-align:center;}
+.ac-new{
+  display:flex;align-items:center;gap:8px;padding:9px 12px;
+  cursor:pointer;font-size:13px;color:var(--accent-hover);
+  border-top:1px solid var(--border);transition:background var(--transition);
+  font-weight:500;
+}
+.ac-new:hover{background:var(--accent-muted);}
+.ac-match{background:rgba(255,208,0,.25);border-radius:3px;padding:0 1px;}
 #login-screen{position:fixed;inset:0;background:var(--bg);z-index:9999;display:flex;align-items:center;justify-content:center;}
 .login-card{background:var(--surface);border:1px solid var(--border2);border-radius:var(--rl);padding:2.5rem;width:380px;max-width:95vw;box-shadow:0 24px 60px rgba(0,0,0,.4);}
 .login-brand{display:flex;align-items:center;gap:10px;margin-bottom:1.75rem;justify-content:center;}
@@ -509,7 +545,7 @@ select.form-input option{background:var(--s2);color:var(--text);}
       </div>
       <div id="wizard-p1">
         <div class="form-grid">
-          <div class="form-group"><label class="form-label">Nombre del cliente *</label><input type="text" class="form-input" id="f-nombre" placeholder="Ej: Juan García" list="ac-clientes" maxlength="100"><datalist id="ac-clientes"></datalist></div>
+          <div class="form-group" style="position:relative"><label class="form-label">Nombre del cliente *</label><div class="ac-wrap" id="ac-wrap"><input type="text" class="form-input" id="f-nombre" placeholder="Escribí el nombre o buscá un cliente…" maxlength="100" autocomplete="off" oninput="acFiltrar()" onkeydown="acKeyDown(event)" onfocus="acFiltrar()"><div class="ac-dropdown" id="ac-dropdown"></div></div></div>
           <div class="form-group"><label class="form-label">Teléfono *</label><input type="text" class="form-input" id="f-telefono" placeholder="11 2345-6789" maxlength="30"></div>
           <div class="form-group span2"><label class="form-label">Dispositivo *</label><input type="text" class="form-input" id="f-dispositivo" placeholder="Ej: Samsung Galaxy A54" maxlength="80"></div>
           <div class="form-group span2"><label class="form-label">Falla reportada *</label><select class="form-input" id="f-falla"><option value="">— Seleccionar falla —</option><option>MODULO</option><option>PIN DE CARGA</option><option>BATERIA</option><option>CUENTA GOOGLE</option><option>OTRAS FALLAS</option></select></div>
@@ -767,8 +803,120 @@ function handleCmdKey(e){const items=document.querySelectorAll('.cmd-item');if(e
 function applyWizardStep(){document.getElementById('wizard-p1').style.display=wizardStep===1?'block':'none';document.getElementById('wizard-p2').style.display=wizardStep===2?'block':'none';document.getElementById('wizard-back-btn').style.display=wizardStep>1?'inline-flex':'none';document.getElementById('wizard-cancel-btn').style.display=wizardStep===1?'inline-flex':'none';document.getElementById('wizard-next-btn').textContent=wizardStep===1?'Siguiente →':'Guardar orden';document.getElementById('wstep-1').className='wstep '+(wizardStep===1?'active':'done');document.getElementById('wstep-2').className='wstep '+(wizardStep===2?'active':'');}
 function wizardNext(){if(wizardStep===1){const nombre=document.getElementById('f-nombre').value.trim();const telefono=document.getElementById('f-telefono').value.trim();const dispositivo=document.getElementById('f-dispositivo').value.trim();const falla=document.getElementById('f-falla').value;if(!nombre||!telefono||!dispositivo||!falla){showToast('Completá los campos obligatorios *',true);return;}wizardStep=2;applyWizardStep();}else{guardarOrden();}}
 function wizardBack(){wizardStep=1;applyWizardStep();}
-function actualizarAutocomplete(){const dl=document.getElementById('ac-clientes');dl.innerHTML=clientes.map(c=>`<option value="${esc(c.nombre)}">`).join('');}
-document.getElementById('f-nombre').addEventListener('input',function(){const c=clientes.find(cl=>cl.nombre.toLowerCase()===this.value.trim().toLowerCase());if(c){document.getElementById('f-telefono').value=c.telefono||'';document.getElementById('f-email').value=c.email||'';document.getElementById('f-dni').value=c.dni||'';}});
+/* ══════════════════════════════════════════
+   AUTOCOMPLETE PERSONALIZADO DE CLIENTES
+   - Busca en tiempo real mientras escribís
+   - Se despliega ABAJO del campo
+   - Muestra avatar con inicial + nombre + teléfono
+   - Navegación con teclado (↑↓ Enter Escape)
+   - Opción "Nuevo cliente" si no existe
+   - Funciona con miles de clientes (filtra en memoria)
+══════════════════════════════════════════ */
+let acSelectedIndex = -1;
+let acVisible = false;
+
+function actualizarAutocomplete() { /* vacío — ya no usamos datalist */ }
+
+function acFiltrar() {
+  const input = document.getElementById('f-nombre');
+  const dropdown = document.getElementById('ac-dropdown');
+  const q = input.value.trim().toLowerCase();
+
+  // Filtrar clientes — si no hay texto muestra los primeros 8
+  const filtrados = q
+    ? clientes.filter(c =>
+        c.nombre.toLowerCase().includes(q) ||
+        (c.telefono && c.telefono.includes(q))
+      ).slice(0, 10)
+    : clientes.slice(0, 8);
+
+  acSelectedIndex = -1;
+
+  if (!filtrados.length && !q) {
+    dropdown.classList.remove('open');
+    acVisible = false;
+    return;
+  }
+
+  const itemsHTML = filtrados.map((c, i) => {
+    const nombreHL = q ? c.nombre.replace(new RegExp(`(${q.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')})`, 'gi'), '<span class="ac-match">$1</span>') : esc(c.nombre);
+    const color = aColor(c.nombre);
+    const ini = inits(c.nombre);
+    return `<div class="ac-item" data-idx="${i}" onmousedown="acSeleccionar(${clientes.indexOf(c)})">
+      <div class="ac-avatar" style="background:${color}">${ini}</div>
+      <div class="ac-info">
+        <div class="ac-name">${nombreHL}</div>
+        <div class="ac-tel">${esc(c.telefono || '')}</div>
+      </div>
+    </div>`;
+  }).join('');
+
+  const newClienteHTML = `<div class="ac-new" onmousedown="acCrearNuevo()">
+    <span>➕</span> Crear cliente "<strong>${esc(input.value.trim())}</strong>"
+  </div>`;
+
+  dropdown.innerHTML = filtrados.length
+    ? itemsHTML + (q ? newClienteHTML : '')
+    : `<div class="ac-empty">No se encontró ningún cliente</div>${newClienteHTML}`;
+
+  dropdown.classList.add('open');
+  acVisible = true;
+}
+
+function acSeleccionar(idx) {
+  const c = clientes[idx];
+  if (!c) return;
+  document.getElementById('f-nombre').value = c.nombre;
+  document.getElementById('f-telefono').value = c.telefono || '';
+  document.getElementById('f-email').value = c.email || '';
+  document.getElementById('f-dni').value = c.dni || '';
+  acCerrar();
+}
+
+function acCrearNuevo() {
+  const nombre = document.getElementById('f-nombre').value.trim();
+  acCerrar();
+  // Pre-llenar el modal de nuevo cliente y abrirlo
+  document.getElementById('nc-nombre').value = nombre;
+  document.getElementById('nc-telefono').value = '';
+  document.getElementById('nc-email').value = '';
+  document.getElementById('nc-dni').value = '';
+  document.getElementById('cliente-modal-title').textContent = 'Nuevo cliente';
+  editandoClienteId = null;
+  openModal('nuevo-cliente');
+}
+
+function acCerrar() {
+  document.getElementById('ac-dropdown').classList.remove('open');
+  acVisible = false;
+  acSelectedIndex = -1;
+}
+
+function acKeyDown(e) {
+  const dropdown = document.getElementById('ac-dropdown');
+  const items = dropdown.querySelectorAll('.ac-item');
+  if (!acVisible) return;
+  if (e.key === 'ArrowDown') {
+    e.preventDefault();
+    acSelectedIndex = Math.min(acSelectedIndex + 1, items.length - 1);
+    items.forEach((it, i) => it.classList.toggle('selected', i === acSelectedIndex));
+  } else if (e.key === 'ArrowUp') {
+    e.preventDefault();
+    acSelectedIndex = Math.max(acSelectedIndex - 1, 0);
+    items.forEach((it, i) => it.classList.toggle('selected', i === acSelectedIndex));
+  } else if (e.key === 'Enter' && acSelectedIndex >= 0) {
+    e.preventDefault();
+    items[acSelectedIndex] && items[acSelectedIndex].dispatchEvent(new MouseEvent('mousedown'));
+  } else if (e.key === 'Escape') {
+    acCerrar();
+  }
+}
+
+// Cerrar al hacer click fuera
+document.addEventListener('click', function(e) {
+  const wrap = document.getElementById('ac-wrap');
+  if (wrap && !wrap.contains(e.target)) acCerrar();
+});
 async function guardarOrden(){
   const nombre=document.getElementById('f-nombre').value.trim();
   const telefono=document.getElementById('f-telefono').value.trim();
